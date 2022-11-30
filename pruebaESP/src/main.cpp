@@ -2,6 +2,7 @@
 
 void setup() {
 	Serial.begin(96200);
+	Serial.println("XD");
 }
 
 void loop() {
