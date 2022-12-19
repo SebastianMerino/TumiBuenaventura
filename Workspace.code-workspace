@@ -1,12 +1,36 @@
 {
 	"folders": [
-		//{
-		//	"path": "."
-		//},
 		{
 			"name": "pruebaESP",
 			"path": "pruebaESP"
+		},
+		{
+			"name": "pruebaBluetooth",
+			"path": "pruebaBluetooth"
+		},
+		{
+			"name": "MQTT",
+			"path": "MQTT"
+		},
+		{
+			"name": "OBD2",
+			"path": "OBD2"
+		},
+		{
+			"name": "Buenaventura",
+			"path": "Buenaventura"
 		}
 	],
-	"settings": {}
+	"settings": {
+		"files.associations": {
+			"array": "cpp",
+			"deque": "cpp",
+			"string": "cpp",
+			"unordered_map": "cpp",
+			"unordered_set": "cpp",
+			"vector": "cpp",
+			"string_view": "cpp",
+			"initializer_list": "cpp"
+		}
+	}
 }
