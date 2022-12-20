@@ -9,10 +9,10 @@ const char* WIFI_PASSWORD = "travi.tum0r";
 // const char* WIFI_PASSWORD = "C9AA28BA93";
 
 // Add your MQTT Broker IP address, example:
-const char* mqtt_url = "f7fd1b8129784adba10ca1a7b2b0c0cc.s2.eu.hivemq.cloud";
-const char* mqtt_username = "usuario";
-const char* mqtt_password = "buenaventura";
-const int mqtt_port = 8883;
+const char* MQTT_URL = "f7fd1b8129784adba10ca1a7b2b0c0cc.s2.eu.hivemq.cloud";
+const char* MQTT_USERNAME = "usuario";
+const char* MQTT_PASSWORD = "buenaventura";
+const int MQTT_PORT = 8883;
 
 static const char *root_ca PROGMEM = R"EOF(
 -----BEGIN CERTIFICATE-----
@@ -55,6 +55,7 @@ char msg[50];
 int value = 0;
 
 void setup_wifi() {
+  WiFi.disconnect(true,true);
   delay(10);
   Serial.print("\nConnecting to ");
   Serial.println(WIFI_SSID);
@@ -66,7 +67,6 @@ void setup_wifi() {
     delay(500);
     Serial.print(".");
   }
-  randomSeed(micros());
   Serial.println("\nWiFi connected\nIP address: ");
   Serial.println(WiFi.localIP());
 }
@@ -76,7 +76,7 @@ void reconnect() {
   while (!client.connected()) {
     Serial.print("Attempting MQTT connection...");
     // Attempt to connect
-    if (client.connect("ESP32Client",mqtt_username,mqtt_password)) {
+    if (client.connect("ESP32Client",MQTT_USERNAME,MQTT_PASSWORD)) {
       Serial.println("connected");
     } else {
       Serial.print("failed, rc=");
@@ -96,7 +96,7 @@ void setup() {
   Serial.begin(9600);
   setup_wifi();
   espClient.setCACert(root_ca); 
-  client.setServer(mqtt_url, mqtt_port);
+  client.setServer(MQTT_URL, MQTT_PORT);
 }
 
 void loop() {

@@ -8,13 +8,13 @@
 BluetoothSerial SerialBT;
 #define ELM_PORT   SerialBT
 
-const char* WIFI_SSID = "XD";
-const char* WIFI_PASSWORD = "travi.tum0r";
+const char* WIFI_SSID = "MOVISTAR_PLUS_4B2A";
+const char* WIFI_PASSWORD = "mAdz1c/aRad.eper4";
 
-const char* mqtt_url = "f7fd1b8129784adba10ca1a7b2b0c0cc.s2.eu.hivemq.cloud";
-const char* mqtt_username = "usuario";
-const char* mqtt_password = "buenaventura";
-const int mqtt_port = 8883;
+const char* MQTT_URL = "f7fd1b8129784adba10ca1a7b2b0c0cc.s2.eu.hivemq.cloud";
+const char* MQTT_USERNAME = "usuario";
+const char* MQTT_PASSWORD = "buenaventura";
+const int MQTT_PORT = 8883;
 
 static const char *root_ca PROGMEM = R"EOF(
 -----BEGIN CERTIFICATE-----
@@ -68,7 +68,6 @@ void setup_wifi() {
     delay(500);
     Serial.print(".");
   }
-  randomSeed(micros());
   Serial.println("\nWiFi connected\nIP address: ");
   Serial.println(WiFi.localIP());
 }
@@ -78,7 +77,7 @@ void reconnect() {
   while (!client.connected()) {
     Serial.print("Attempting MQTT connection...");
     // Attempt to connect
-    if (client.connect("ESP32Client",mqtt_username,mqtt_password)) {
+    if (client.connect("ESP32Client",MQTT_USERNAME,MQTT_PASSWORD)) {
       Serial.println("connected");
     } else {
       Serial.print("failed, rc=");
@@ -99,7 +98,7 @@ void setup() {
 
   setup_wifi();
   espClient.setCACert(root_ca); 
-  client.setServer(mqtt_url, mqtt_port);
+  client.setServer(MQTT_URL, MQTT_PORT);
 
   ELM_PORT.begin("ArduHUD", true);
   SerialBT.setPin("1234");

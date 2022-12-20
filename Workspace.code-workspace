@@ -1,12 +1,12 @@
 {
 	"folders": [
 		{
-			"name": "pruebaESP",
-			"path": "pruebaESP"
+			"name": "Wifi_module",
+			"path": "Wifi_module"
 		},
 		{
-			"name": "pruebaBluetooth",
-			"path": "pruebaBluetooth"
+			"name": "Bluetooth",
+			"path": "Bluetooth"
 		},
 		{
 			"name": "MQTT",
