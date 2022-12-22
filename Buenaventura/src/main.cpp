@@ -5,11 +5,12 @@
 #include <WiFiClientSecure.h>
 #include <PubSubClient.h>
 
-BluetoothSerial SerialBT;
-#define ELM_PORT   SerialBT
-
-const char* WIFI_SSID = "MOVISTAR_PLUS_4B2A";
-const char* WIFI_PASSWORD = "mAdz1c/aRad.eper4";
+//---------------------------------------------------------------
+//		CONSTANTES
+//---------------------------------------------------------------
+char* WIFI_SSID = "XD";
+char* WIFI_PASSWORD = "travi.tum0r";
+const int WIFI_TIMEOUT_MS = 5000;
 
 const char* MQTT_URL = "f7fd1b8129784adba10ca1a7b2b0c0cc.s2.eu.hivemq.cloud";
 const char* MQTT_USERNAME = "usuario";
@@ -52,28 +53,38 @@ emyPxgcYxn/eR44/KJ4EBs+lVDR3veyJm+kXQ99b21/+jh5Xos1AnX5iItreGCc=
 
 WiFiClientSecure espClient;
 PubSubClient client(espClient);
-long last = 0;
-char msg[50];
-int value = 0;
 
-void setup_wifi() {
-  delay(10);
-  Serial.print("\nConnecting to ");
-  Serial.println(WIFI_SSID);
+BluetoothSerial SerialBT;
+ELM327 myELM327;
+uint8_t ELM_address[6]  = {0x01, 0x23, 0x45, 0x67, 0x89, 0xBA};
 
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+//---------------------------------------------------------------
+//		FUNCIONES
+//---------------------------------------------------------------
 
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
-  }
-  Serial.println("\nWiFi connected\nIP address: ");
-  Serial.println(WiFi.localIP());
+/// Se conecta a una red en especifico
+void connectToWiFi(char* wifi_ssid, char* wifi_password) {
+	WiFi.disconnect();
+	Serial.printf("\nConnecting to %s ...",wifi_ssid);
+	WiFi.mode(WIFI_STA);
+	WiFi.begin(wifi_ssid,wifi_password);
+	// Esperando a que se conecte o al timeout
+	unsigned long start = millis();
+	while (WiFi.status() != WL_CONNECTED && millis() - start < WIFI_TIMEOUT_MS) {
+		Serial.print(".");
+		delay(100);
+	}
+	if (WiFi.status() != WL_CONNECTED) {
+		Serial.println("Failed");
+		esp_deep_sleep_start();		// El ESP se suspende 
+	}
+	else {
+		Serial.println("Conected!");
+	}
 }
 
-void reconnect() {
-  // Loop until we're reconnected
+/// Loops until reconnected
+void MQTTreconnect() {
   while (!client.connected()) {
     Serial.print("Attempting MQTT connection...");
     // Attempt to connect
@@ -83,60 +94,59 @@ void reconnect() {
       Serial.print("failed, rc=");
       Serial.print(client.state());
       Serial.println(" try again in 5 seconds");
-      // Wait 5 seconds before retrying
-      delay(5000);
+      delay(5000);  // Wait 5 seconds before retrying
     }
   }
 }
 
-ELM327 myELM327;
-uint32_t rpm = 0;
-uint8_t address[6]  = {0x01, 0x23, 0x45, 0x67, 0x89, 0xBA};
-
-void setup() {
-  Serial.begin(115200);
-
-  setup_wifi();
-  espClient.setCACert(root_ca); 
-  client.setServer(MQTT_URL, MQTT_PORT);
-
-  ELM_PORT.begin("ArduHUD", true);
+/// @brief Initializes the Bluetooth and connects to ELM327 
+void OBD2setup() {
+  SerialBT.begin("ESP32", true);
   SerialBT.setPin("1234");
-
-  if (!ELM_PORT.connect(address)) {
+  if (!SerialBT.connect(ELM_address)) {
     Serial.println("Couldn't connect to OBD scanner - Phase 1");
     while(1);
   }
-
-  if (!myELM327.begin(ELM_PORT, false, 2000)) {
+  if (!myELM327.begin(SerialBT, false, 2000)) {
     Serial.println("Couldn't connect to OBD scanner - Phase 2");
     while (1);
   }
-
   Serial.println("Connected to ELM327");
 }
 
 
-void loop() {
+//---------------------------------------------------------------
+//		PRINCIPAL
+//---------------------------------------------------------------
+void setup() {
+  Serial.begin(115200);
+  connectToWiFi(WIFI_SSID, WIFI_PASSWORD);
+  espClient.setCACert(root_ca); 
+  client.setServer(MQTT_URL, MQTT_PORT);
+}
 
+long now, last = 0;
+float RPM, mph, throttle, fuelLevel;
+
+void loop() {
   if (!client.connected()) {
-    reconnect();
+    MQTTreconnect();
   }
   client.loop();
 
-  long now = millis();
+  now = millis();
   if (now - last > 1500) {
-    float tempRPM = myELM327.rpm();
+    last = millis();
+
+    RPM = myELM327.rpm();
     if (myELM327.nb_rx_state == ELM_SUCCESS) {
       Serial.println("on");
-      client.publish("esp32/timestamp","on");
+      client.publish("auto/encendido","on");
     }
 
     else if (myELM327.nb_rx_state != ELM_GETTING_MSG) {
       Serial.println("off");
-      client.publish("esp32/timestamp","off");
+      client.publish("auto/encendido","off");
     }
-    last = millis();
   }
-  
 }

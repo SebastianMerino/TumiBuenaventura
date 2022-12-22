@@ -81,11 +81,12 @@ void selectNetwork(char* WIFI_SSID, char* WIFI_PASSWORD) {
 		Serial.print(pw_char);
 		if (pw_char=='\r') {
 			Serial.read();
+			WIFI_PASSWORD[i] = '\0';
 			break;
 		}
 		WIFI_PASSWORD[i] = pw_char;
 	}
-	if (i==32) Serial.println("\nCharacter limit for password surpassed");
+	if (i==32)	Serial.println("\nCharacter limit for password surpassed");
 }
 
 /// Setea la fecha y hora manualmente

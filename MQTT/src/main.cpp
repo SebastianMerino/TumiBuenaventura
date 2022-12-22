@@ -67,11 +67,9 @@ void setup_wifi() {
     delay(500);
     Serial.print(".");
   }
-  Serial.println("\nWiFi connected\nIP address: ");
-  Serial.println(WiFi.localIP());
 }
 
-void reconnect() {
+void MQTTreconnect() {
   // Loop until we're reconnected
   while (!client.connected()) {
     Serial.print("Attempting MQTT connection...");
@@ -101,7 +99,7 @@ void setup() {
 
 void loop() {
   if (!client.connected()) {
-    reconnect();
+    MQTTreconnect();
   }
   client.loop();
 
@@ -121,5 +119,5 @@ void loop() {
   delay(4500);
   Serial.println("ON\t09:10:26");
   client.publish("esp32/auto","ON    09:10:26");
-  while (1) ;
+  while (1);
 }

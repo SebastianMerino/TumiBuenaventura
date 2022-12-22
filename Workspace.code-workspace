@@ -19,6 +19,10 @@
 		{
 			"name": "Buenaventura",
 			"path": "Buenaventura"
+		},
+		{
+			"name": "MemoriaSD",
+			"path": "MemoriaSD"
 		}
 	],
 	"settings": {
