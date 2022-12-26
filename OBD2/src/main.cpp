@@ -10,17 +10,18 @@
 
 // void setup() {
 //   Serial.begin(115200);
-//   ELM_PORT.begin("ArduHUD", true);
+//   ELM_PORT.begin("ESP32", true);
 //   ELM_PORT.setPin("1234");
-
-//   if (!ELM_PORT.connect(address)) {
+//   Serial.println("Connecting to OBD scanner...");
+//   ELM_PORT.connect(address);
+//   if (!ELM_PORT.connected(1000)) {
 //     Serial.println("Couldn't connect to OBD scanner - Phase 1");
-//     while(1);
+//     esp_deep_sleep_start();
 //   }
 
 //   if (!myELM327.begin(ELM_PORT, false, 2000)) {
 //     Serial.println("Couldn't connect to OBD scanner - Phase 2");
-//     while (1);
+//     esp_deep_sleep_start();
 //   }
 
 //   Serial.println("Connected to ELM327");
@@ -30,24 +31,28 @@
 // void loop() {
 //   float tempRPM = myELM327.rpm();
 //   if (myELM327.nb_rx_state == ELM_SUCCESS) {
-//     //rpm = (uint32_t)tempRPM;
-//     //Serial.print("RPM: "); Serial.println(rpm);
-//     if (encendido==0) {
-//       Serial.println("ON");
-//       encendido = 1;
-//     }
+//     rpm = (uint32_t)tempRPM;
+//     // Serial.printf("Supported PIDs 01-20: %d\n", myELM327.supportedPIDs_1_20());
+//     // Serial.printf("Supported PIDs 21-40: %d\n", myELM327.supportedPIDs_21_40());
+//     // Serial.printf("Supported PIDs 41-60: %d\n", myELM327.supportedPIDs_41_60());
+//     // Serial.printf("Supported PIDs 61-80: %d\n", myELM327.supportedPIDs_61_80());
+//     Serial.print("RPM: "); Serial.println(rpm);
+//     // if (encendido==0) {
+//     //   Serial.println("ON");
+//     //   encendido = 1;
+//     // }
 //   }
 //   else if (myELM327.nb_rx_state != ELM_GETTING_MSG) {
-//     //myELM327.printError();
-//     if (encendido==1) {
-//       Serial.println("OFF");
-//       encendido = 0;
-//     }
+//     myELM327.printError();
+//     // if (encendido==1) {
+//     //   Serial.println("OFF");
+//     //   encendido = 0;
+//     // }
 //   }
+//   delay(500);
 // }
+
 BluetoothSerial SerialBT;
-
-
 #define DEBUG_PORT Serial
 #define ELM_PORT   SerialBT
 

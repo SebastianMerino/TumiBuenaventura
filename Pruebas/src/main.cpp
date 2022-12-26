@@ -115,7 +115,7 @@ bool OBD2setup() {
     Serial.println("Couldn't connect to OBD scanner - Phase 1");
     return false;
   }
-  if (!myELM327.begin(SerialBT, false, 2000)) {
+  if (!myELM327.begin(SerialBT, false, 500)) {
     Serial.println("Couldn't connect to OBD scanner - Phase 2");
     return false;
   }
@@ -164,15 +164,15 @@ void setup() {
   if (!OBD2setup()) {
     esp_deep_sleep_start();		// El ESP se suspende
   }
-
-  is_connected = connectToWiFi(WIFI_SSID, WIFI_PASSWORD); 
+  is_connected = false;
+  //is_connected = connectToWiFi(WIFI_SSID, WIFI_PASSWORD); 
   if (is_connected) {
     espClient.setCACert(root_ca);
     client.setServer(MQTT_URL, MQTT_PORT);
     configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);	// Configura fecha y hora con WiFi
   } 
   else {
-    setTime(2022,12,26,13,15,0,0);
+    setTime(2022,12,26,18,28,0,0);
     //esp_deep_sleep_start();		// El ESP se suspende
   }
 
@@ -184,12 +184,16 @@ void setup() {
     File file = SD.open("/prueba3.csv", FILE_WRITE);
     file.print("Timestamp,RPM,KpH,Throttle,Fuel level\n");
     file.close();
+    Serial.println("SD card detected and ready");
   }
   
 }
 
 unsigned long now, last = 0;
 float rpm, throttle, fuelLevel, kph;
+struct tm timeinfo;
+char Timestamp[50];
+
 void loop() {
   if (is_connected) {
     if (!client.connected()) {
@@ -215,10 +219,7 @@ void loop() {
   }
   else {
     now = millis();
-    if (now - last > 1500) {
-      struct tm timeinfo;
-      char Timestamp[50];
-
+    if (now - last > 50) {
       last = millis();
       rpm = myELM327.rpm();
       if (myELM327.nb_rx_state == ELM_SUCCESS) {
@@ -226,11 +227,11 @@ void loop() {
         kph = myELM327.kph();
         throttle = myELM327.throttle();
         fuelLevel = myELM327.fuelLevel();
-        printf("\r \33[2K \033[A \33[2K \033[A \33[2K \033[A \33[2K \033[A");
+        //printf("\r \33[2K \033[A \33[2K \033[A \33[2K \033[A \33[2K \033[A");
         Serial.printf("RPM: %f\n", rpm);
         Serial.printf("Kph: %f\n", kph);
         Serial.printf("Throttle: %f\n", throttle);
-        Serial.printf("Fuel Level: %f\n", fuelLevel);
+        Serial.printf("Fuel Level: %f\n\n", fuelLevel);
         /* 
         \33[2K  erases the entire line your cursor is currently on
         \033[A  moves your cursor up one line
@@ -253,6 +254,7 @@ void loop() {
             
       }
       else if (myELM327.nb_rx_state != ELM_GETTING_MSG) {
+        myELM327.printError();
         Serial.println("off");
       }
     }  

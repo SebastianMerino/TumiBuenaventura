@@ -145,7 +145,7 @@ void loop() {
     if (now - last > 1500) {
       last = millis();
 
-      RPM = myELM327.rpm();
+      rpm = myELM327.rpm();
       if (myELM327.nb_rx_state == ELM_SUCCESS) {
         Serial.println("on");
         client.publish("auto/encendido","on");
