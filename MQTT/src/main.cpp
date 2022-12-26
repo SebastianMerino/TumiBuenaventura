@@ -3,8 +3,8 @@
 #include <PubSubClient.h>
 
 // Replace the next variables with your SSID/Password combination
-const char* WIFI_SSID = "XD";
-const char* WIFI_PASSWORD = "travi.tum0r";
+const char* WIFI_SSID = "Celular";
+const char* WIFI_PASSWORD = "contra123";
 // const char* WIFI_SSID = "redpucp";
 // const char* WIFI_PASSWORD = "C9AA28BA93";
 

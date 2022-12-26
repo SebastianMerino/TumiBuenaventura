@@ -51,6 +51,7 @@ BluetoothSerial SerialBT;
 #define DEBUG_PORT Serial
 #define ELM_PORT   SerialBT
 
+uint8_t ELM_address[6]  = {0x01, 0x23, 0x45, 0x67, 0x89, 0xBA};
 
 void setup()
 {
@@ -59,11 +60,11 @@ void setup()
 
   DEBUG_PORT.begin(115200);
   ELM_PORT.begin("ESP32test", true);
-  //ELM_PORT.setPin("1234");
+  ELM_PORT.setPin("1234");
 
   DEBUG_PORT.println("Attempting to connect to ELM327...");
 
-  if (!ELM_PORT.connect("OBDII"))
+  if (!ELM_PORT.connect(ELM_address))
   {
     DEBUG_PORT.println("Couldn't connect to OBD scanner");
     while(1);
