@@ -11,8 +11,8 @@
 //---------------------------------------------------------------
 //		CONSTANTES
 //---------------------------------------------------------------
-const char* WIFI_SSID = "Celular";
-const char* WIFI_PASSWORD = "contra123";
+// const char* WIFI_SSID = "Celular";
+// const char* WIFI_PASSWORD = "contra123";
 const int WIFI_TIMEOUT_MS = 5000;
 
 const char* ntpServer = "pool.ntp.org";
@@ -91,6 +91,55 @@ bool connectToWiFi(const char* wifi_ssid, const char* wifi_password) {
 	}
 }
 
+/// @brief Muestra redes disponibles
+void showNetworks() {
+	int n = WiFi.scanNetworks();
+	Serial.println("scan done");
+	if (n == 0) {
+		Serial.println("no networks found");
+	} else {
+	Serial.print(n);
+	Serial.println(" networks found");
+	}
+	for (int i = 0; i < n; ++i) {
+		// Print SSID and RSSI for each network found
+		Serial.print(i + 1);
+		Serial.print(": ");
+		Serial.print(WiFi.SSID(i));
+		Serial.print(" (");
+		Serial.print(WiFi.RSSI(i));
+		Serial.print(")");
+		Serial.println((WiFi.encryptionType(i) == WIFI_AUTH_OPEN)?" ":"*");
+		delay(10);
+	}
+}
+
+/// @brief Selecciona una red de las disponibles
+void selectNetwork(char* WIFI_SSID, char* WIFI_PASSWORD) {
+	Serial.print("Select SSID: ");
+	while (!Serial.available()) ;
+	char SSID_id = Serial.read();
+	String SSID_str = WiFi.SSID(SSID_id - '1'); 
+	SSID_str.toCharArray(WIFI_SSID,SSID_str.length()+1);
+
+	Serial.printf("%s selected \n",WIFI_SSID);
+
+	Serial.print("Password: ");
+	int i; char pw_char;
+	for (i=0; i<32; i++) {
+		while (!Serial.available()) ;
+		pw_char = Serial.read();
+		Serial.print(pw_char);
+		if (pw_char=='\r') {
+			Serial.read();
+			WIFI_PASSWORD[i] = '\0';
+			break;
+		}
+		WIFI_PASSWORD[i] = pw_char;
+	}
+	if (i==32)	Serial.println("\nCharacter limit for password surpassed");
+}
+
 /// @brief Loops until reconnected
 void MQTTreconnect() {
   while (!client.connected()) {
@@ -109,6 +158,7 @@ void MQTTreconnect() {
 
 /// @brief Initializes the Bluetooth and connects to ELM327 
 bool OBD2setup() {
+  Serial.println("\nConnecting to OBDII scanner..."); 
   SerialBT.begin("ESP32", true);
   SerialBT.setPin("1234");
   if (!SerialBT.connect(ELM_address)) {
@@ -157,22 +207,22 @@ bool setupSD() {
 //		PRINCIPAL
 //---------------------------------------------------------------
 bool is_connected;
+char wifi_ssid[32];
+char wifi_password[32];
+
 void setup() {
   Serial.begin(9600);
-  
-  Serial.println("\nConnecting to OBDII scanner..."); 
-  if (!OBD2setup()) {
-    esp_deep_sleep_start();		// El ESP se suspende
-  }
-  is_connected = false;
-  //is_connected = connectToWiFi(WIFI_SSID, WIFI_PASSWORD); 
+  showNetworks();
+  selectNetwork(wifi_ssid, wifi_password);
+  is_connected = connectToWiFi(wifi_ssid, wifi_password);
+
   if (is_connected) {
     espClient.setCACert(root_ca);
     client.setServer(MQTT_URL, MQTT_PORT);
     configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);	// Configura fecha y hora con WiFi
   } 
   else {
-    setTime(2022,12,26,18,28,0,0);
+    setTime(2023,01,01,0,0,0,0);
     //esp_deep_sleep_start();		// El ESP se suspende
   }
 
@@ -180,83 +230,79 @@ void setup() {
     esp_deep_sleep_start();		// El ESP se suspende
   }
   else {
-    SD.remove("/prueba3.csv");
-    File file = SD.open("/prueba3.csv", FILE_WRITE);
-    file.print("Timestamp,RPM,KpH,Throttle,Fuel level\n");
+    SD.remove("/Data.csv");
+    File file = SD.open("/Data.csv", FILE_WRITE);
+    file.print("Timestamp, Estado\n");
     file.close();
     Serial.println("SD card detected and ready");
   }
   
+  if (!OBD2setup()) {
+    esp_deep_sleep_start();		// El ESP se suspende
+  }
 }
 
 unsigned long now, last = 0;
 float rpm, throttle, fuelLevel, kph;
 struct tm timeinfo;
 char Timestamp[50];
+bool encendido = true;
 
 void loop() {
-  if (is_connected) {
-    if (!client.connected()) {
-      MQTTreconnect();
-    }
-    client.loop();
-
-    now = millis();
-    if (now - last > 1500) {
-      last = millis();
+  now = millis();
+  if (now - last > 1500) {
+    last = millis();
+    if (is_connected) {
+      if (!client.connected()) {
+        MQTTreconnect();
+      }
+      client.loop();
 
       rpm = myELM327.rpm();
-      if (myELM327.nb_rx_state == ELM_SUCCESS) {
+      if (myELM327.nb_rx_state == ELM_SUCCESS && !encendido) {
         Serial.println("on");
         client.publish("auto/encendido","on");
+        encendido = true;
       }
-
-      else if (myELM327.nb_rx_state != ELM_GETTING_MSG) {
+      else if (myELM327.nb_rx_state != ELM_GETTING_MSG && encendido) {
         Serial.println("off");
         client.publish("auto/encendido","off");
+        encendido = false;
       }
     }
-  }
-  else {
-    now = millis();
-    if (now - last > 50) {
-      last = millis();
+    
+    else {
       rpm = myELM327.rpm();
-      if (myELM327.nb_rx_state == ELM_SUCCESS) {
+      if (myELM327.nb_rx_state == ELM_SUCCESS && !encendido) {
         Serial.println("on");
-        kph = myELM327.kph();
-        throttle = myELM327.throttle();
-        fuelLevel = myELM327.fuelLevel();
-        //printf("\r \33[2K \033[A \33[2K \033[A \33[2K \033[A \33[2K \033[A");
-        Serial.printf("RPM: %f\n", rpm);
-        Serial.printf("Kph: %f\n", kph);
-        Serial.printf("Throttle: %f\n", throttle);
-        Serial.printf("Fuel Level: %f\n\n", fuelLevel);
-        /* 
-        \33[2K  erases the entire line your cursor is currently on
-        \033[A  moves your cursor up one line
-        \r      brings your cursor to the beginning of the line */
-
         File file = SD.open("/prueba3.csv", FILE_APPEND);
-        if(!file){
-          Serial.println("Failed to open file for appending");
-          return;
-        }
-        else {
+        if(file) {
           getLocalTime(&timeinfo);
           sprintf(Timestamp,"%02d/%02d/%d %02d:%02d:%02d",timeinfo.tm_mday, timeinfo.tm_mon + 1, \
           timeinfo.tm_year + 1900, timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
           file.print(Timestamp);
-          file.printf(",%f,%f,%f,%f\n", rpm, kph, throttle, fuelLevel);
+          file.print(",ON\n");
           file.close();
-        }
+          encendido = true;
+        }   
+      }
 
-            
-      }
-      else if (myELM327.nb_rx_state != ELM_GETTING_MSG) {
-        myELM327.printError();
+      else if (myELM327.nb_rx_state != ELM_GETTING_MSG && encendido) {
+        //myELM327.printError();
         Serial.println("off");
+        File file = SD.open("/prueba3.csv", FILE_APPEND);
+        if(file) {
+          getLocalTime(&timeinfo);
+          sprintf(Timestamp,"%02d/%02d/%d %02d:%02d:%02d",timeinfo.tm_mday, timeinfo.tm_mon + 1, \
+          timeinfo.tm_year + 1900, timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
+          file.print(Timestamp);
+          file.print(",OFF\n");
+          file.close();
+          encendido = false;
+        }
       }
-    }  
+    }
+
   }
+  
 }

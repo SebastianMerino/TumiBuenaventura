@@ -3,13 +3,11 @@
 #include <SD.h>
 #include <WiFiClientSecure.h>
 #include <time.h>
-// #include <SPI.h>
 
 char WIFI_SSID[32];
 char WIFI_PASSWORD[32];
 //char* WIFI_SSID = "Celular";
 //char* WIFI_PASSWORD = "contra123";
-//const char* WIFI_PASSWORD = "mAdz1c/aRad.eper4";
 const int WIFI_TIMEOUT_MS = 5000;
 
 const char* ntpServer = "pool.ntp.org";
@@ -133,7 +131,7 @@ void setup(){
     return;
   }
 
-  File file = SD.open("/prueba2.csv", FILE_WRITE);
+  File file = SD.open("/prueba.csv", FILE_WRITE);
   file.print("Estado, Timestamp\n");
   file.close();
 }
