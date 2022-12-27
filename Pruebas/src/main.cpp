@@ -275,7 +275,7 @@ void loop() {
       rpm = myELM327.rpm();
       if (myELM327.nb_rx_state == ELM_SUCCESS && !encendido) {
         Serial.println("on");
-        File file = SD.open("/prueba3.csv", FILE_APPEND);
+        File file = SD.open("/Data.csv", FILE_APPEND);
         if(file) {
           getLocalTime(&timeinfo);
           sprintf(Timestamp,"%02d/%02d/%d %02d:%02d:%02d",timeinfo.tm_mday, timeinfo.tm_mon + 1, \
@@ -290,7 +290,7 @@ void loop() {
       else if (myELM327.nb_rx_state != ELM_GETTING_MSG && encendido) {
         //myELM327.printError();
         Serial.println("off");
-        File file = SD.open("/prueba3.csv", FILE_APPEND);
+        File file = SD.open("/Data.csv", FILE_APPEND);
         if(file) {
           getLocalTime(&timeinfo);
           sprintf(Timestamp,"%02d/%02d/%d %02d:%02d:%02d",timeinfo.tm_mday, timeinfo.tm_mon + 1, \
