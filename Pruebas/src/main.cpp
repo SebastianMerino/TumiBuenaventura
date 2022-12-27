@@ -252,7 +252,7 @@ void loop() {
   now = millis();
   if (now - last > 1500) {
     last = millis();
-    if (is_connected) {
+    if (WiFi.status() != WL_CONNECTED) {
       if (!client.connected()) {
         MQTTreconnect();
       }
