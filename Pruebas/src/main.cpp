@@ -13,7 +13,7 @@
 //---------------------------------------------------------------
 // const char* WIFI_SSID = "Celular";
 // const char* WIFI_PASSWORD = "contra123";
-const int WIFI_TIMEOUT_MS = 5000;
+const int WIFI_TIMEOUT_MS = 2000;
 
 const char* ntpServer = "pool.ntp.org";
 const long  gmtOffset_sec = -18000;
@@ -242,7 +242,7 @@ void setup() {
   }
 }
 
-unsigned long now, last = 0;
+unsigned long now, lastBT = 0, lastWiFi = 0;
 float rpm, throttle, fuelLevel, kph;
 struct tm timeinfo;
 char Timestamp[50];
@@ -250,9 +250,9 @@ bool encendido = true;
 
 void loop() {
   now = millis();
-  if (now - last > 1500) {
-    last = millis();
-    if (WiFi.status() != WL_CONNECTED) {
+  if (now - lastBT > 1500) {
+    lastBT = millis();
+    if (WiFi.status() != WL_CONNECTED)  {
       if (!client.connected()) {
         MQTTreconnect();
       }
@@ -272,6 +272,11 @@ void loop() {
     }
     
     else {
+      if (now - lastWiFi > 10*60*1000) {
+        lastWiFi = millis();
+        is_connected = connectToWiFi(wifi_ssid, wifi_password);
+      }
+
       rpm = myELM327.rpm();
       if (myELM327.nb_rx_state == ELM_SUCCESS && !encendido) {
         Serial.println("on");
@@ -302,7 +307,6 @@ void loop() {
         }
       }
     }
-
   }
   
 }
