@@ -113,6 +113,7 @@ void setTime(int yr, int month, int mday, int hr, int minute, int sec, int isDst
 void setup() {
 	Serial.begin(921600);
 	pinMode(LED,OUTPUT);
+	//pinMode(12,INPUT);
 	showNetworks();
 	selectNetwork(WIFI_SSID, WIFI_PASSWORD);
 	connectToWiFi(WIFI_SSID, WIFI_PASSWORD);

@@ -71,7 +71,7 @@ void setup_wifi() {
 
 void MQTTreconnect() {
   // Loop until we're reconnected
-  while (!client.connected()) {
+  if (!client.connected()) {
     Serial.print("Attempting MQTT connection...");
     // Attempt to connect
     if (client.connect("ESP32Client",MQTT_USERNAME,MQTT_PASSWORD)) {
@@ -98,26 +98,26 @@ void setup() {
 }
 
 void loop() {
-  if (!client.connected()) {
-    MQTTreconnect();
-  }
-  client.loop();
+  MQTTreconnect();
+  if (client.connected()) {
+    client.loop();
 
-  // long now = millis();
-  // if (now - lastMsg > 1500) {
-  //   ltoa(now,msg,10);
-  //   Serial.print("Timestamp: ");
-  //   Serial.println(now);
-  //   client.publish("esp32/timestamp",msg);
-  //   lastMsg = millis();
-  // }
-  Serial.println("ON\t09:10:15");
-  client.publish("esp32/auto","ON    09:10:15");
-  delay(6000);
-  Serial.println("OFF\t09:10:21");
-  client.publish("esp32/auto","OFF   09:10:21");
-  delay(4500);
-  Serial.println("ON\t09:10:26");
-  client.publish("esp32/auto","ON    09:10:26");
-  while (1);
+    // long now = millis();
+    // if (now - lastMsg > 1500) {
+    //   ltoa(now,msg,10);
+    //   Serial.print("Timestamp: ");
+    //   Serial.println(now);
+    //   client.publish("esp32/timestamp",msg);
+    //   lastMsg = millis();
+    // }
+    Serial.println("ON\t09:10:15");
+    client.publish("esp32/auto","ON    09:10:15");
+    delay(6000);
+    Serial.println("OFF\t09:10:21");
+    client.publish("esp32/auto","OFF   09:10:21");
+    delay(4500);
+    Serial.println("ON\t09:10:26");
+    client.publish("esp32/auto","ON    09:10:26");
+    delay(6000);
+  }
 }
