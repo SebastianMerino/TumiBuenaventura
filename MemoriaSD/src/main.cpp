@@ -112,9 +112,9 @@ void setup(){
 
   showNetworks();
 	selectNetwork(WIFI_SSID, WIFI_PASSWORD);
-  bool is_connected = connectToWiFi(WIFI_SSID, WIFI_PASSWORD);
+  bool wifi_connected = connectToWiFi(WIFI_SSID, WIFI_PASSWORD);
 
-  if (is_connected)
+  if (wifi_connected)
   	configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);	// Configura fecha y hora con WiFi
   else {
     setTime(2022,12,26,13,15,0,0);
