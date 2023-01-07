@@ -59,7 +59,7 @@ emyPxgcYxn/eR44/KJ4EBs+lVDR3veyJm+kXQ99b21/+jh5Xos1AnX5iItreGCc=
 )EOF";
 
 WiFiClientSecure espClient;
-PubSubClient client(espClient);
+PubSubClient MQTTclient(espClient);
 
 BluetoothSerial SerialBT;
 ELM327 myELM327;
@@ -146,14 +146,14 @@ void selectNetwork(char* WIFI_SSID, char* WIFI_PASSWORD)
 /// @brief Espera a la reconexión al servidor MQTT 
 void MQTTreconnect()
 {
-  if (!client.connected()) {
+  if (!MQTTclient.connected()) {
     Serial.print("Attempting MQTT connection...");
     // Attempt to connect
-    if (client.connect("ESP32Client",MQTT_USERNAME,MQTT_PASSWORD)) {
+    if (MQTTclient.connect("ESP32Client",MQTT_USERNAME,MQTT_PASSWORD)) {
       Serial.println("connected");
     } else {
       Serial.print("failed, rc=");
-      Serial.println(client.state());
+      Serial.println(MQTTclient.state());
       //Serial.println(" try again in 5 seconds");
       //delay(5000);  // Wait 5 seconds before retrying
     }
@@ -226,7 +226,7 @@ void setup() {
 
   if (is_connected) {
     espClient.setCACert(root_ca);
-    client.setServer(MQTT_URL, MQTT_PORT);
+    MQTTclient.setServer(MQTT_URL, MQTT_PORT);
     configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);	// Configura fecha y hora con WiFi
   } 
   else {
@@ -282,9 +282,9 @@ void loop() {
 
         if (is_connected) {
           MQTTreconnect();
-          if (client.connected()) {
-            client.loop();
-            client.publish("auto/encendido","on");
+          if (MQTTclient.connected()) {
+            MQTTclient.loop();
+            MQTTclient.publish("auto/encendido","on");
           }  
         }
       }
@@ -305,9 +305,9 @@ void loop() {
 
         if (is_connected) {
           MQTTreconnect();
-          if (client.connected()) {
-            client.loop();
-            client.publish("auto/encendido","off");
+          if (MQTTclient.connected()) {
+            MQTTclient.loop();
+            MQTTclient.publish("auto/encendido","off");
           }
         }
       }

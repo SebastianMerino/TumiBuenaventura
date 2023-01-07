@@ -15,7 +15,7 @@ const int MQTT_PORT = 1883;
 
 
 WiFiClient espClient;
-PubSubClient client(espClient);
+PubSubClient MQTTclient(espClient);
 long lastMsg = 0;
 char msg[50];
 int value = 0;
@@ -37,14 +37,14 @@ void setup_wifi() {
 
 void MQTTreconnect() {
   // Loop until we're reconnected
-  if (!client.connected()) {
+  if (!MQTTclient.connected()) {
     Serial.print("Attempting MQTT connection...");
     // Attempt to connect
-    if (client.connect("ESP32Client-buenaventura")) {
+    if (MQTTclient.connect("ESP32Client-buenaventura", MQTT_USERNAME, MQTT_PASSWORD)) {
       Serial.println("connected");
     } else {
       Serial.print("failed, rc=");
-      Serial.print(client.state());
+      Serial.print(MQTTclient.state());
       Serial.println(" try again in 5 seconds");
       // Wait 5 seconds before retrying
       delay(5000);
@@ -60,13 +60,13 @@ void setup() {
   Serial.begin(9600);
   setup_wifi();
   // espClient.setCACert(root_ca); 
-  client.setServer(MQTT_URL, MQTT_PORT);
+  MQTTclient.setServer(MQTT_URL, MQTT_PORT);
 }
 
 void loop() {
   MQTTreconnect();
-  if (client.connected()) {
-    client.loop();
+  if (MQTTclient.connected()) {
+    //MQTTclient.loop();
 
     // long now = millis();
     // if (now - lastMsg > 1500) {
@@ -77,16 +77,16 @@ void loop() {
     //   lastMsg = millis();
     // }
     Serial.println("ON\t09:10:15");
-    client.publish("buenaventura/auto","ON    09:10:15");
+    MQTTclient.publish("buenaventura/auto","ON    09:10:15");
     delay(6000);
     Serial.println("OFF\t09:10:21");
-    client.publish("buenaventura/auto","OFF   09:10:21");
+    MQTTclient.publish("buenaventura/auto","OFF   09:10:21");
     delay(4500);
     Serial.println("ON\t09:10:26");
-    client.publish("buenaventura/auto","ON    09:10:26");
+    MQTTclient.publish("buenaventura/auto","ON    09:10:26");
     delay(6000);
     Serial.println("OFF\t09:10:30");
-    client.publish("buenaventura/auto","OFF   09:10:30");
+    MQTTclient.publish("buenaventura/auto","OFF   09:10:30");
     delay(3000);
   }
 }
