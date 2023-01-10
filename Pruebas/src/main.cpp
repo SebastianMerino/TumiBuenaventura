@@ -139,7 +139,7 @@ void MQTTinitialize()
   // Attempt to connect
   if (MQTTclient.connect("ESP32Client",MQTT_USERNAME,MQTT_PASSWORD,"vehiculos/auto_prueba/conectado",1,true,"N")) {
     Serial.println("connected");
-    MQTTclient.publish("vehiculos/auto_prueba/conectado","S");
+    MQTTclient.publish("vehiculos/auto_prueba/conectado","Y");
   } else {
     Serial.print("failed, rc=");
     Serial.println(MQTTclient.state());
@@ -282,6 +282,12 @@ void loop() {
   if (now - lastBT > 100) {
     lastBT = millis();
 
+    // Tries to reconnect once every minute
+    if (now - lastWiFi > 60*1000 && !wifi_connected) {
+      lastWiFi = millis();
+      wifi_connected = connectToWiFi(wifi_ssid, wifi_password);
+    }
+
     // Check if Wifi is still connected
     if (wifi_connected != (WiFi.status() == WL_CONNECTED)) {
       wifi_connected = WiFi.status() == WL_CONNECTED;
@@ -291,13 +297,7 @@ void loop() {
         UpdateData();
       }
     }
-
-    // Tries to reconnect once every minute
-    if (now - lastWiFi > 60*1000 && !wifi_connected) {
-      lastWiFi = millis();
-      wifi_connected = connectToWiFi(wifi_ssid, wifi_password);
-    }
-
+    
     // Asks for information
     rpm = myELM327.rpm();
 
@@ -312,7 +312,7 @@ void loop() {
       if (wifi_connected) {
         if (MQTTclient.connected()) {
           MQTTclient.loop();
-          MQTTclient.publish("vehiculos/auto_prueba/encendido","S");
+          MQTTclient.publish("vehiculos/auto_prueba/encendido","Y");
         }
         else {
           MQTTinitialize();
