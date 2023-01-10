@@ -40,8 +40,9 @@ void MQTTreconnect() {
   if (!MQTTclient.connected()) {
     Serial.print("Attempting MQTT connection...");
     // Attempt to connect
-    if (MQTTclient.connect("ESP32Client-buenaventura", MQTT_USERNAME, MQTT_PASSWORD)) {
+    if (MQTTclient.connect("ESP32Client",MQTT_USERNAME,MQTT_PASSWORD,"vehiculos/auto_prueba/conectado",2,true,"N")) {
       Serial.println("connected");
+      MQTTclient.setKeepAlive(5);
     } else {
       Serial.print("failed, rc=");
       Serial.print(MQTTclient.state());

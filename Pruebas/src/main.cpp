@@ -32,9 +32,42 @@ PubSubClient MQTTclient(espClient);
 BluetoothSerial SerialBT;
 ELM327 myELM327;
 uint8_t ELM_address[6]  = {0x01, 0x23, 0x45, 0x67, 0x89, 0xBA};
+
+
+//---------------------------------------------------------------
+//		VARIABLES GLOBALES
+//---------------------------------------------------------------
+bool wifi_connected, attached_card;
+char wifi_ssid[32];
+char wifi_password[32];
+bool encendido = true;
+struct tm timeinfo;
+char Timestamp[50];
+
+
 //---------------------------------------------------------------
 //		FUNCIONES
 //---------------------------------------------------------------
+
+/// @brief Receives a string from the serial port
+/// @param array Pointer to string
+/// @param max_len Maximum string length
+void receive_str(char* array, int max_len)
+{
+  int i; char rx_char;
+  for (i=0; i<max_len; i++) {
+    while (!Serial.available()) ;
+    rx_char = Serial.read();
+    Serial.print(rx_char);
+    if (rx_char=='\r') {
+      Serial.read();
+      array[i] = '\0';
+      break;
+    }
+    array[i] = rx_char;
+  }
+  if (i==max_len) Serial.println("\nCharacter limit surpassed");
+}
 
 /// @brief Se conecta a una red en especifico
 bool connectToWiFi(const char* wifi_ssid, const char* wifi_password)
@@ -99,47 +132,29 @@ void selectNetwork(char* WIFI_SSID, char* WIFI_PASSWORD)
 	receive_str(WIFI_PASSWORD, 32);
 }
 
-/// @brief Receives a string from the serial port
-/// @param array Pointer to string
-/// @param max_len Maximum string length
-void receive_str(char* array, int max_len)
-{
-  int i; char rx_char;
-  for (i=0; i<max_len; i++) {
-    while (!Serial.available()) ;
-    rx_char = Serial.read();
-    Serial.print(rx_char);
-    if (rx_char=='\r') {
-      Serial.read();
-      array[i] = '\0';
-      break;
-    }
-    array[i] = rx_char;
-  }
-  if (i==max_len) Serial.println("\nCharacter limit surpassed");
-}
-
 /// @brief Espera a la reconexión al servidor MQTT 
-void MQTTreconnect()
+void MQTTinitialize()
 {
-  if (!MQTTclient.connected()) {
-    Serial.print("Attempting MQTT connection...");
-    // Attempt to connect
-    if (MQTTclient.connect("ESP32Client",MQTT_USERNAME,MQTT_PASSWORD,"/vehiculos/conectado",1,true,"N")) {
-      Serial.println("connected");
-      MQTTclient.publish("vehiculos/conectado","S");
-    } else {
-      Serial.print("failed, rc=");
-      Serial.println(MQTTclient.state());
-      //Serial.println(" try again in 5 seconds");
-      //delay(5000);  // Wait 5 seconds before retrying
-    }
+  Serial.print("Attempting MQTT connection...");
+  // Attempt to connect
+  if (MQTTclient.connect("ESP32Client",MQTT_USERNAME,MQTT_PASSWORD,"vehiculos/auto_prueba/conectado",1,true,"N")) {
+    Serial.println("connected");
+    MQTTclient.publish("vehiculos/auto_prueba/conectado","S");
+  } else {
+    Serial.print("failed, rc=");
+    Serial.println(MQTTclient.state());
+    //Serial.println(" try again in 5 seconds");
+    //delay(5000);  // Wait 5 seconds before retrying
   }
 }
 
 /// @brief Inicializa el Bluetooth y se conecta al ELM327 
 bool OBD2setup()
 {
+  Serial.println("Connect to OBD2 port and turn on vehicle");
+  Serial.println("Press any key when ready");
+  while (!Serial.available()) ;
+  Serial.read();
   Serial.println("\nConnecting to OBDII scanner..."); 
   SerialBT.begin("ESP32", true);
   SerialBT.setPin("1234");
@@ -147,7 +162,7 @@ bool OBD2setup()
     Serial.println("Couldn't connect to OBD scanner - Phase 1");
     return false;
   }
-  if (!myELM327.begin(SerialBT, false, 500)) {
+  if (!myELM327.begin(SerialBT, false, 5000)) {
     Serial.println("Couldn't connect to OBD scanner - Phase 2");
     return false;
   }
@@ -174,7 +189,7 @@ void setTime(int yr, int month, int mday, int hr, int minute, int sec, int isDst
 
 /// @brief Setup for SD Card
 /// @return False if error
-bool setupSD()
+bool SDsetup()
 {
   if(!SD.begin(5)){
     Serial.println("Card Mount Failed");
@@ -188,11 +203,30 @@ bool setupSD()
   return true;
 }
 
+/// @brief Actualiza la data en el archivo csv 
+void UpdateData()
+{
+  File file = SD.open("/Data.csv", FILE_APPEND);
+  getLocalTime(&timeinfo);
+  sprintf(Timestamp,"%02d/%02d/%d %02d:%02d:%02d",timeinfo.tm_mday, timeinfo.tm_mon + 1, \
+  timeinfo.tm_year + 1900, timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
+  file.print(Timestamp);
+  if (encendido)
+    file.print(",ON,");
+  else
+    file.print(",OFF,");
+  if (wifi_connected)
+    file.print("ON\n");
+  else
+    file.print("OFF\n");
+  file.close();
+}
+
 /// @brief Set digital pins to 0
 void pullDownPins() 
 {
   int pines[] = {2,12,13,14,15,22,25,26,27,32,33};
-  for (int i=0;i<13;i++) {
+  for (int i=0; i<11; i++) {
     pinMode(pines[i], INPUT_PULLDOWN);
   }
 }
@@ -200,10 +234,6 @@ void pullDownPins()
 //---------------------------------------------------------------
 //		PRINCIPAL
 //---------------------------------------------------------------
-bool wifi_connected, attached_card;
-char wifi_ssid[32];
-char wifi_password[32];
-
 void setup() {
   pullDownPins();
   pinMode(LED_WIFI, OUTPUT);
@@ -219,17 +249,18 @@ void setup() {
   if (wifi_connected) {
     digitalWrite(LED_WIFI, HIGH);
     MQTTclient.setServer(MQTT_URL, MQTT_PORT);
+    MQTTinitialize();
     configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);	// Configura fecha y hora con WiFi
   } 
   else {
     setTime(2023,01,01,0,0,0,0);
   }
 
-  attached_card = setupSD(); 
+  attached_card = SDsetup(); 
   if (attached_card) {
     SD.remove("/Data.csv");
     File file = SD.open("/Data.csv", FILE_WRITE);
-    file.print("Timestamp, Estado\n");
+    file.print("Timestamp, Encendido, Conectado\n");
     file.close();
     Serial.println("SD card ready");
   }
@@ -237,74 +268,73 @@ void setup() {
   if (!OBD2setup()) {
     esp_deep_sleep_start();		// El ESP se suspende
   }
+
+  UpdateData();
 }
 
-unsigned long now, lastBT = millis(), lastWiFi = millis();
-float rpm, throttle, fuelLevel, kph;
-struct tm timeinfo;
-char Timestamp[50];
-bool encendido = true;
+unsigned long now, lastBT = 0, lastWiFi =0;
+float rpm;
 
 void loop() {
   now = millis();
 
-  // Every half a second you sen a BT message
-  if (now - lastBT > 500) {
+  // Every half a second you send a BT message
+  if (now - lastBT > 100) {
     lastBT = millis();
-    Serial.print(lastBT);
 
-    // Tries to reconnect every 10 minutes
-    if (now - lastWiFi > 10*60*1000 && !wifi_connected) {
+    // Check if Wifi is still connected
+    if (wifi_connected != (WiFi.status() == WL_CONNECTED)) {
+      wifi_connected = WiFi.status() == WL_CONNECTED;
+      Serial.print("Estado Wifi: ");
+      Serial.println(wifi_connected);
+      if (attached_card) {
+        UpdateData();
+      }
+    }
+
+    // Tries to reconnect once every minute
+    if (now - lastWiFi > 60*1000 && !wifi_connected) {
       lastWiFi = millis();
       wifi_connected = connectToWiFi(wifi_ssid, wifi_password);
     }
 
     // Asks for information
     rpm = myELM327.rpm();
-    Serial.println(myELM327.nb_rx_state);
 
     if (myELM327.nb_rx_state == ELM_SUCCESS && !encendido) {
       Serial.println("on");
       encendido = true;
 
       if (attached_card) {
-        File file = SD.open("/Data.csv", FILE_APPEND);
-        getLocalTime(&timeinfo);
-        sprintf(Timestamp,"%02d/%02d/%d %02d:%02d:%02d",timeinfo.tm_mday, timeinfo.tm_mon + 1, \
-        timeinfo.tm_year + 1900, timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
-        file.print(Timestamp);
-        file.print(",ON\n");
-        file.close();
+        UpdateData();
       }
       
       if (wifi_connected) {
-        MQTTreconnect();
         if (MQTTclient.connected()) {
           MQTTclient.loop();
           MQTTclient.publish("vehiculos/auto_prueba/encendido","S");
-        }  
+        }
+        else {
+          MQTTinitialize();
+        }
       }
     }
 
-    else if ((myELM327.nb_rx_state == ELM_NO_DATA)&& encendido) {
+    else if (myELM327.nb_rx_state == ELM_NO_DATA && encendido) {
       Serial.println("off");
       encendido = false;
 
       if(attached_card) {
-        File file = SD.open("/Data.csv", FILE_APPEND);
-        getLocalTime(&timeinfo);
-        sprintf(Timestamp,"%02d/%02d/%d %02d:%02d:%02d",timeinfo.tm_mday, timeinfo.tm_mon + 1, \
-        timeinfo.tm_year + 1900, timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
-        file.print(Timestamp);
-        file.print(",OFF\n");
-        file.close();
+        UpdateData();
       }
 
       if (wifi_connected) {
-        MQTTreconnect();
         if (MQTTclient.connected()) {
           MQTTclient.loop();
           MQTTclient.publish("vehiculos/auto_prueba/encendido","N");
+        }
+        else {
+          MQTTinitialize();
         }
       }
     }
