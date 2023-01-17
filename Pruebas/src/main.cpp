@@ -38,10 +38,12 @@ uint8_t ELM_address[6]  = {0x01, 0x23, 0x45, 0x67, 0x89, 0xBA};
 //		VARIABLES GLOBALES
 //---------------------------------------------------------------
 bool attached_card;
-char wifi_ssid[32];
-char wifi_password[32];
+// char wifi_ssid[32];
+// char wifi_password[32];
+char wifi_ssid[] = "Celular";
+char wifi_password[] = "contra123";
 int reconnect_time_ms = 60*1000;
-bool encendido = true;
+bool encendido = false;
 bool mqtt_connected;
 struct tm timeinfo;
 char mqtt_message[25];
@@ -155,10 +157,10 @@ bool MQTTinitialize()
 /// @brief Inicializa el Bluetooth y se conecta al ELM327 
 bool OBD2setup()
 {
-  Serial.println("Connect to OBD2 port and turn on vehicle");
-  Serial.println("Press any key when ready");
-  while (!Serial.available()) ;
-  Serial.read();
+  // Serial.println("Connect to OBD2 port and turn on vehicle");
+  // Serial.println("Press any key when ready");
+  // while (!Serial.available()) ;
+  // Serial.read();
   Serial.println("\nConnecting to OBDII scanner..."); 
   SerialBT.begin("ESP32", true);
   SerialBT.setPin("1234");
@@ -245,8 +247,14 @@ void UploadData()
     //Serial.println(line);
     MQTTclient.loop();
     MQTTclient.publish("vehiculos/auto_prueba/encendido",line);
+    Serial.print("Publicando: ");
+    Serial.println(line);
+    digitalWrite(LED_CONNECTION, LOW);
+    delay(150);
+    digitalWrite(LED_CONNECTION, HIGH);
+    delay(100);
   }
-  //SD.remove("/Data.csv");
+  SD.remove("/Data.csv");
 }
 
 /// @brief Set digital pins to 0
@@ -269,15 +277,28 @@ void setup() {
   digitalWrite(LED_CONNECTION, LOW);
 
   Serial.begin(9600);
-  showNetworks();
-  selectNetwork(wifi_ssid, wifi_password);
+
+  if (!OBD2setup()) {
+    while (1) {
+      digitalWrite(LED_POWER, LOW);
+      delay(500);
+      digitalWrite(LED_POWER, HIGH);
+      delay(500);
+    }
+  }
+
+  // showNetworks();
+  // selectNetwork(wifi_ssid, wifi_password);
   connectToWiFi(wifi_ssid, wifi_password);
   if (WiFi.isConnected()) {
     MQTTclient.setServer(MQTT_URL, MQTT_PORT);
     MQTTclient.setKeepAlive(2);
     MQTTinitialize();
     configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);	// Configura fecha y hora con WiFi
-  } 
+  }
+  else {
+    setTime(2023,01,01,0,0,0,0);
+  }
 
   attached_card = SDsetup(); 
   if (attached_card) {
@@ -286,14 +307,6 @@ void setup() {
     // file.print("Timestamp, Encendido\n");
     file.close();
     Serial.println("SD card ready");
-  }
-  
-  if (!OBD2setup()) {
-    //esp_deep_sleep_start();		// El ESP se suspende
-  }
-
-  else {
-    setTime(2023,01,01,0,0,0,0);
   }
 }
 
@@ -313,17 +326,18 @@ void loop() {
         if (!WiFi.isConnected()) {
           connectToWiFi(wifi_ssid, wifi_password);
         }
-        else {
+        if (!MQTTclient.connected()) {
           MQTTinitialize();
           if (MQTTclient.connected()) {
+            Serial.println("Uploading data...");
             UploadData();
           }
         }
       }
   }
 
-  // Send MQTT message each 5 seconds
-  if (now - lastPub > 5000) {
+  // Send MQTT message each 10 seconds
+  if (now - lastPub > 10000) {
     lastPub = millis();
     getLocalTime(&timeinfo);
     if (encendido) {
@@ -341,7 +355,8 @@ void loop() {
       MQTTclient.publish("vehiculos/auto_prueba/encendido",mqtt_message);
     }
     else if (attached_card) {
-      Serial.println("Guardando en SD...");
+      Serial.print("Guardando en SD: ");
+      Serial.println(mqtt_message);
       SaveData();
     } 
   }
