@@ -40,9 +40,13 @@ uint8_t ELM_address[6]  = {0x01, 0x23, 0x45, 0x67, 0x89, 0xBA};
 bool attached_card;
 // char wifi_ssid[32];
 // char wifi_password[32];
-char wifi_ssid[] = "Celular";
-char wifi_password[] = "contra123";
-int reconnect_time_ms = 60*1000;
+//char wifi_ssid[] = "iPhone12ProJean";
+//char wifi_password[] = "Artilugio2014";
+//char wifi_ssid[] = "Lalorp";
+//char wifi_password[] = "cristobal";
+char wifi_ssid[] = "iPhone12ProJean";
+char wifi_password[] = "Jean1976";
+int reconnect_time_ms = 30*1000;
 bool encendido = false;
 bool mqtt_connected;
 struct tm timeinfo;
@@ -327,6 +331,7 @@ void loop() {
           connectToWiFi(wifi_ssid, wifi_password);
         }
         if (!MQTTclient.connected()) {
+          configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);	// Configura fecha y hora con WiFi
           MQTTinitialize();
           if (MQTTclient.connected()) {
             Serial.println("Uploading data...");
@@ -377,7 +382,7 @@ void loop() {
     else if (myELM327.nb_rx_state == ELM_NO_DATA && encendido) {
       Serial.println("off");
       encendido = false;
-      reconnect_time_ms = 60*1000;
+      reconnect_time_ms = 30*1000;
     }
   }
 }
