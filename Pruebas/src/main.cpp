@@ -352,9 +352,6 @@ void loop() {
     }
     else if (myELM327.nb_rx_state != ELM_GETTING_MSG) {
       OBD2setup();
-      // if (encendido) {       
-      //   return;
-      // }
     }
   }
 
