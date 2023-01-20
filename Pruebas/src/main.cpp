@@ -327,6 +327,7 @@ void setup() {
 }
 
 unsigned long lastBT = 0, last_reconect_try = 0, lastPub = 0;
+int count = 0;
 
 void loop() {
   // Every 120ms you send a BT message
@@ -337,6 +338,7 @@ void loop() {
     // Asks for information
     myELM327.rpm();
     if (myELM327.nb_rx_state == ELM_SUCCESS) {
+      count = 0;
       if (!encendido) {
         Serial.println("on");
         encendido = true;
@@ -344,6 +346,7 @@ void loop() {
       }
     }
     else if (myELM327.nb_rx_state == ELM_NO_DATA) {
+      count = 0;
       if (encendido) {
         Serial.println("off");
         encendido = false;
@@ -351,6 +354,10 @@ void loop() {
       }
     }
     else if (myELM327.nb_rx_state != ELM_GETTING_MSG) {
+      count += 1;
+      if (count >= 3) {
+        encendido = false;
+      }
       OBD2setup();
     }
   }
