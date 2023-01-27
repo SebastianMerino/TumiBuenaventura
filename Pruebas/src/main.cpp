@@ -38,8 +38,10 @@ uint8_t ELM_address[6]  = {0x01, 0x23, 0x45, 0x67, 0x89, 0xBA};
 //		VARIABLES GLOBALES
 //---------------------------------------------------------------
 bool attached_card;
-char wifi_ssid[] = "RouterPortatil";
-char wifi_password[] = "Buenaventura2023";
+// char wifi_ssid[] = "RouterPortatil";
+// char wifi_password[] = "Buenaventura2023";
+char wifi_ssid[] = "redpucp";
+char wifi_password[] = "C9AA28BA93";
 int reconnect_time_ms;
 bool encendido = false;
 bool mqtt_connected;
@@ -140,9 +142,9 @@ bool MQTTinitialize()
 {
   Serial.print("Attempting MQTT connection...");
   // Attempt to connect
-  if (MQTTclient.connect("ESP32Client",MQTT_USERNAME,MQTT_PASSWORD,"vehiculos/auto_prueba/conectado",2,true,"N")) {
+  if (MQTTclient.connect("ESP32Client",MQTT_USERNAME,MQTT_PASSWORD,"testing/testing/conectado",2,true,"N")) {
     Serial.println("connected");
-    MQTTclient.publish("vehiculos/auto_prueba/conectado","Y",true);
+    MQTTclient.publish("testing/testing/conectado","Y",true);
     return true;
   } else {
     Serial.print("failed, rc=");
@@ -161,12 +163,18 @@ bool OBD2setup()
     Serial.println("Couldn't connect to OBD scanner - Phase 1");
     return false;
   }
-  if (!myELM327.begin(SerialBT, false, 1000)) {
+  if (!myELM327.begin(SerialBT, false, 500)) {
     Serial.println("Couldn't connect to OBD scanner - Phase 2");
     return false;
   }
   Serial.println("Connected to ELM327");
   return true;
+}
+
+/// @brief Disconnects BT and unlinks device
+void BTdisconnect() {
+  SerialBT.disconnect();
+  SerialBT.unpairDevice(ELM_address);
 }
 
 /// @brief Setea la fecha y hora manualmente
@@ -279,7 +287,7 @@ void setup() {
     }
     if (WiFi.isConnected()) {
       MQTTclient.setServer(MQTT_URL, MQTT_PORT);
-      MQTTclient.setKeepAlive(2);
+      MQTTclient.setKeepAlive(8);
       if (MQTTinitialize()) {
         configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);	// Configura fecha y hora con WiFi
         digitalWrite(LED_CONNECTION, HIGH);
@@ -299,35 +307,36 @@ void setup() {
   }
 
   while (!OBD2setup()) {
+    BTdisconnect();
     Serial.println("Reconnecting to ELM327...");
   }
  
-  while (1) {
-    Serial.println("Waiting for first turn on...");
-    myELM327.rpm();
-    if (myELM327.nb_rx_state == ELM_SUCCESS) {
-      reconnect_time_ms = 5*1000;
-      encendido = true;
-      Serial.println("on");
-      break;
-    }
-    else if (myELM327.nb_rx_state != ELM_GETTING_MSG) {
-      digitalWrite(LED_POWER, LOW);
-      delay(400);
-      digitalWrite(LED_POWER, HIGH);
-      delay(400);
-      digitalWrite(LED_POWER, LOW);
-      delay(400);
-      digitalWrite(LED_POWER, HIGH);
-      OBD2setup();
-      continue;
-    }
-    delay(100);
-  }
+//   while (1) {
+//     Serial.println("Waiting for first turn on...");
+//     myELM327.rpm();
+//     if (myELM327.nb_rx_state == ELM_SUCCESS) {
+//       reconnect_time_ms = 5*1000;
+//       encendido = true;
+//       Serial.println("on");
+//       break;
+//     }
+//     else if (myELM327.nb_rx_state != ELM_GETTING_MSG) {
+//       digitalWrite(LED_POWER, LOW);
+//       delay(400);
+//       digitalWrite(LED_POWER, HIGH);
+//       delay(400);
+//       digitalWrite(LED_POWER, LOW);
+//       delay(400);
+//       digitalWrite(LED_POWER, HIGH);
+//       OBD2setup();
+//       continue;
+//     }
+//     delay(100);
+//   }
 }
 
 unsigned long lastBT = 0, last_reconect_try = 0, lastPub = 0;
-int count = 0;
+bool BTconnected = true;
 
 void loop() {
   // Every 120ms you send a BT message
@@ -338,7 +347,7 @@ void loop() {
     // Asks for information
     myELM327.rpm();
     if (myELM327.nb_rx_state == ELM_SUCCESS) {
-      count = 0;
+      BTconnected = true;
       if (!encendido) {
         Serial.println("on");
         encendido = true;
@@ -346,7 +355,7 @@ void loop() {
       }
     }
     else if (myELM327.nb_rx_state == ELM_NO_DATA) {
-      count = 0;
+      BTconnected = true;
       if (encendido) {
         Serial.println("off");
         encendido = false;
@@ -354,16 +363,23 @@ void loop() {
       }
     }
     else if (myELM327.nb_rx_state != ELM_GETTING_MSG) {
-      count += 1;
-      if (count >= 3) {
-        encendido = false;
+      if (WiFi.isConnected() && MQTTclient.connected() && BTconnected) {
+        getLocalTime(&timeinfo);
+        sprintf(mqtt_message,"%d-%02d-%02dT%02d:%02d:%02d,BT disconnected",timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, \
+        timeinfo.tm_mday, timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
+        Serial.println(mqtt_message);
+        MQTTclient.publish("testing/testing/BT",mqtt_message,true);
       }
+      BTconnected = false;
+      myELM327.printError();
+      BTdisconnect();
       OBD2setup();
+      encendido = false;
     }
   }
 
   // Checks connection
-  if (!MQTTclient.connected()) {
+  if (!MQTTclient.connected() || !WiFi.isConnected()) {
     digitalWrite(LED_CONNECTION, LOW);
 
     // Tries to reconnect once every reconnect time
@@ -376,8 +392,10 @@ void loop() {
         MQTTinitialize();
         if (MQTTclient.connected()) {
           digitalWrite(LED_CONNECTION, HIGH);
-          Serial.println("Uploading data...");
-          UploadData();
+          if (attached_card) {
+            Serial.println("Uploading data...");
+            UploadData();
+          }
         }
       }
     }
@@ -399,12 +417,13 @@ void loop() {
     if (WiFi.isConnected() && MQTTclient.connected()) {
       Serial.print("Publicando: ");
       Serial.println(mqtt_message);
-      MQTTclient.publish("vehiculos/auto_prueba/encendido",mqtt_message);
+      MQTTclient.publish("testing/testing/encendido",mqtt_message);
     }
     else if (attached_card) {
       Serial.print("Guardando en SD: ");
       Serial.println(mqtt_message);
       SaveData();
     } 
+
   }
 }
