@@ -363,13 +363,6 @@ void loop() {
       }
     }
     else if (myELM327.nb_rx_state != ELM_GETTING_MSG) {
-      if (WiFi.isConnected() && MQTTclient.connected() && BTconnected) {
-        getLocalTime(&timeinfo);
-        sprintf(mqtt_message,"%d-%02d-%02dT%02d:%02d:%02d,BT disconnected",timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, \
-        timeinfo.tm_mday, timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
-        Serial.println(mqtt_message);
-        MQTTclient.publish("testing/testing/BT",mqtt_message,true);
-      }
       BTconnected = false;
       myELM327.printError();
       BTdisconnect();
