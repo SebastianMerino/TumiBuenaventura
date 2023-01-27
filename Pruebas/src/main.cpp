@@ -10,8 +10,6 @@
 //---------------------------------------------------------------
 //		CONSTANTES
 //---------------------------------------------------------------
-// const char* WIFI_SSID = "Celular";
-// const char* WIFI_PASSWORD = "contra123";
 const int WIFI_TIMEOUT_MS = 2000;
 
 const char* ntpServer = "pool.ntp.org";
@@ -40,8 +38,10 @@ uint8_t ELM_address[6]  = {0x01, 0x23, 0x45, 0x67, 0x89, 0xBA};
 bool attached_card;
 // char wifi_ssid[] = "RouterPortatil";
 // char wifi_password[] = "Buenaventura2023";
-char wifi_ssid[] = "redpucp";
-char wifi_password[] = "C9AA28BA93";
+// char wifi_ssid[] = "redpucp";
+// char wifi_password[] = "C9AA28BA93";
+char wifi_ssid[] = "MOVISTAR_4B2A";
+char wifi_password[] = "mAdz1c/aRad.eper4";
 int reconnect_time_ms;
 bool encendido = false;
 bool mqtt_connected;
@@ -267,8 +267,14 @@ void pullDownPins()
   }
 }
 
+/// @brief timer interrupt function to keep MQTT connection
+void IRAM_ATTR onTimer(){
+  MQTTclient.loop();
+}
+
+
 //---------------------------------------------------------------
-//		PRINCIPAL
+//		MAIN SETUP
 //---------------------------------------------------------------
 void setup() {
   pullDownPins();
@@ -287,7 +293,7 @@ void setup() {
     }
     if (WiFi.isConnected()) {
       MQTTclient.setServer(MQTT_URL, MQTT_PORT);
-      MQTTclient.setKeepAlive(8);
+      MQTTclient.setKeepAlive(10);
       if (MQTTinitialize()) {
         configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);	// Configura fecha y hora con WiFi
         digitalWrite(LED_CONNECTION, HIGH);
@@ -296,6 +302,12 @@ void setup() {
     }
     delay(5*1000);
   }
+
+  // hw_timer_t *My_timer = NULL;
+  // My_timer = timerBegin(0, 80, true);
+  // timerAttachInterrupt(My_timer, &onTimer, true);
+  // timerAlarmWrite(My_timer, 4000000, true);
+  // timerAlarmEnable(My_timer);
 
   attached_card = SDsetup(); 
   if (attached_card) {
@@ -311,43 +323,53 @@ void setup() {
     Serial.println("Reconnecting to ELM327...");
   }
  
-//   while (1) {
-//     Serial.println("Waiting for first turn on...");
-//     myELM327.rpm();
-//     if (myELM327.nb_rx_state == ELM_SUCCESS) {
-//       reconnect_time_ms = 5*1000;
-//       encendido = true;
-//       Serial.println("on");
-//       break;
-//     }
-//     else if (myELM327.nb_rx_state != ELM_GETTING_MSG) {
-//       digitalWrite(LED_POWER, LOW);
-//       delay(400);
-//       digitalWrite(LED_POWER, HIGH);
-//       delay(400);
-//       digitalWrite(LED_POWER, LOW);
-//       delay(400);
-//       digitalWrite(LED_POWER, HIGH);
-//       OBD2setup();
-//       continue;
-//     }
-//     delay(100);
-//   }
+  // while (1) {
+  //   Serial.println("Waiting for first turn on...");
+  //   myELM327.rpm();
+  //   if (myELM327.nb_rx_state == ELM_SUCCESS) {
+  //     reconnect_time_ms = 5*1000;
+  //     encendido = true;
+  //     Serial.println("on");
+  //     break;
+  //   }
+  //   else if (myELM327.nb_rx_state != ELM_GETTING_MSG) {
+  //     digitalWrite(LED_POWER, LOW);
+  //     delay(400);
+  //     digitalWrite(LED_POWER, HIGH);
+  //     delay(400);
+  //     digitalWrite(LED_POWER, LOW);
+  //     delay(400);
+  //     digitalWrite(LED_POWER, HIGH);
+  //     OBD2setup();
+  //     continue;
+  //   }
+  //   delay(100);
+  // }
 }
 
-unsigned long lastBT = 0, last_reconect_try = 0, lastPub = 0;
-bool BTconnected = true;
+//---------------------------------------------------------------
+//		MAIN LOOP
+//---------------------------------------------------------------
+unsigned long lastBT = 0, last_reconect_try = 0, lastPub = 0, lastMQTT = 0;
+unsigned long BT_time_ms = 120;
+bool BT_connected = true;
 
 void loop() {
-  // Every 120ms you send a BT message
-  if (millis() - lastBT > 120) {
-    lastBT = millis();
-    MQTTclient.loop();
 
+  if (millis() - lastMQTT > 4000) {
+    Serial.println("Looping MQTT...");
+    lastMQTT = millis();
+    MQTTclient.loop();
+  }
+
+  // Every 120ms you send a BT message
+  if (millis() - lastBT > BT_time_ms) {
+    lastBT = millis();
+    
     // Asks for information
     myELM327.rpm();
     if (myELM327.nb_rx_state == ELM_SUCCESS) {
-      BTconnected = true;
+      BT_connected = true;
       if (!encendido) {
         Serial.println("on");
         encendido = true;
@@ -355,7 +377,7 @@ void loop() {
       }
     }
     else if (myELM327.nb_rx_state == ELM_NO_DATA) {
-      BTconnected = true;
+      BT_connected = true;
       if (encendido) {
         Serial.println("off");
         encendido = false;
@@ -363,11 +385,18 @@ void loop() {
       }
     }
     else if (myELM327.nb_rx_state != ELM_GETTING_MSG) {
-      BTconnected = false;
+      if (WiFi.isConnected() && MQTTclient.connected()) {
+        getLocalTime(&timeinfo);
+        sprintf(mqtt_message,"%d-%02d-%02dT%02d:%02d:%02d",timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, \
+        timeinfo.tm_mday, timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
+        Serial.println(mqtt_message);
+        MQTTclient.publish("testing/testing/BT_reconnect_time",mqtt_message,true);
+      }
+      BT_connected = false;
       myELM327.printError();
       BTdisconnect();
-      OBD2setup();
-      encendido = false;
+      OBD2setup();    // This takes longer than the keepAlive interval
+      MQTTclient.loop();
     }
   }
 
@@ -410,13 +439,22 @@ void loop() {
     if (WiFi.isConnected() && MQTTclient.connected()) {
       Serial.print("Publicando: ");
       Serial.println(mqtt_message);
-      MQTTclient.publish("testing/testing/encendido",mqtt_message);
+      MQTTclient.publish("testing/testing/encendido",mqtt_message,true);
+      if (BT_connected) {
+        MQTTclient.publish("testing/testing/BT","Y",true);
+      }
+      else {
+        MQTTclient.publish("testing/testing/BT","N",true);
+      }
     }
     else if (attached_card) {
       Serial.print("Guardando en SD: ");
       Serial.println(mqtt_message);
       SaveData();
     } 
+    else {
+      Serial.println("No hay conexion");
+    }
 
   }
 }
