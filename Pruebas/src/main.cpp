@@ -6,6 +6,7 @@
 #include <FS.h>
 #include <SD.h>
 #include <time.h>
+#include <esp_bt.h>
 
 //---------------------------------------------------------------
 //		CONSTANTES
@@ -36,18 +37,15 @@ uint8_t ELM_address[6]  = {0x01, 0x23, 0x45, 0x67, 0x89, 0xBA};
 //		VARIABLES GLOBALES
 //---------------------------------------------------------------
 bool attached_card;
-// char wifi_ssid[] = "RouterPortatil";
-// char wifi_password[] = "Buenaventura2023";
-// char wifi_ssid[] = "redpucp";
-// char wifi_password[] = "C9AA28BA93";
-char wifi_ssid[] = "MOVISTAR_4B2A";
-char wifi_password[] = "mAdz1c/aRad.eper4";
+char wifi_ssid[] = "RouterPortatil";
+char wifi_password[] = "Buenaventura2023";
 int reconnect_time_ms;
 bool encendido = false;
 bool mqtt_connected;
 struct tm timeinfo;
 char mqtt_message[25];
 bool BT_connected = true;
+int sent_lines = 0;
 
 //---------------------------------------------------------------
 //		FUNCIONES
@@ -82,12 +80,12 @@ bool MQTTinitialize()
 {
   MQTTclient.disconnect();
   MQTTclient.setServer(MQTT_URL, MQTT_PORT);
-  MQTTclient.setKeepAlive(10);
+  MQTTclient.setKeepAlive(5);
   Serial.print("Attempting MQTT connection...");
   // Attempt to connect
-  if (MQTTclient.connect("ESP32Client",MQTT_USERNAME,MQTT_PASSWORD,"testing/testing/conectado",2,true,"N")) {
+  if (MQTTclient.connect("ESP32Client",MQTT_USERNAME,MQTT_PASSWORD,"vehiculos/placa/conectado",2,true,"N")) {
     Serial.println("connected");
-    MQTTclient.publish("testing/testing/conectado","Y",true);
+    MQTTclient.publish("vehiculos/placa/conectado","Y",true);
     return true;
   } else {
     Serial.print("failed, rc=");
@@ -160,21 +158,40 @@ void UploadData()
 {
   char rx_char;
   char line[25];
+  int current_line = 0;
   int id_char;
   File file = SD.open("/Data.csv", FILE_READ);
 
+  // Checks how many lines have been send already
+  if (sent_lines>0) {
+    while (file.available() && current_line<sent_lines) {
+      for (id_char=0; id_char<25; id_char++) {
+        rx_char = file.read();
+        if (rx_char == '\n') {
+          current_line++;
+          break;
+        } 
+      }
+    }
+    MQTTclient.loop();
+  }
+  
   while (file.available()) {
     for (id_char=0; id_char<25; id_char++) {
       rx_char = file.read();
       if (rx_char == '\n') {
         line[id_char] = '\0';
+        current_line++;
         break;
       } 
       line[id_char] = rx_char;
     }
-    //Serial.println(line);
-    MQTTclient.loop();
+    
+    if (!MQTTclient.connected() || !WiFi.isConnected()) {
+      return;
+    }
     MQTTclient.publish("vehiculos/auto_prueba/encendido",line);
+    sent_lines = current_line;
     Serial.print("Publicando: ");
     Serial.println(line);
     digitalWrite(LED_CONNECTION, LOW);
@@ -183,6 +200,7 @@ void UploadData()
     delay(100);
   }
   SD.remove("/Data.csv");
+  sent_lines = 0;
 }
 
 /// @brief Set digital pins to 0
@@ -196,7 +214,7 @@ void pullDownPins()
 
 /// @brief  Function for threaded BT restart
 /// @param parameter NONE
-void Task1code( void * parameter)
+void Task1code(void * parameter)
 {
   while (1) {
     if (!BT_connected) {
@@ -218,11 +236,32 @@ void setup() {
   pinMode(LED_POWER, OUTPUT);
   digitalWrite(LED_POWER, HIGH);
   digitalWrite(LED_CONNECTION, LOW);
+  esp_bt_controller_mem_release(ESP_BT_MODE_BLE);
 
   Serial.begin(9600);
 
+  // OBD2 port setup
+  unsigned long timeout = 10000;
+  unsigned long start = millis();
+  bool error = true;
+  while (millis() - start < timeout) {
+    if (!OBD2setup()) {
+      BTdisconnect();
+      Serial.println("Reconnecting to ELM327...");
+    }
+    else {
+      error = false;
+      break;
+    }
+  }
+  if (error) {
+    Serial.println("Could not connect to ELM327, rebooting...");
+    ESP.restart();
+  }
+  xTaskCreatePinnedToCore(Task1code,"Task1",10000,NULL,1,&Task1,1); 
+
   // Waiting for MQTT connection
-  unsigned long start, timeout = 30*1000;
+  timeout = 30*1000;
   reconnect_time_ms = 30*1000;
   start = millis();
   while (millis() - start < timeout) {
@@ -252,14 +291,6 @@ void setup() {
   else {
     Serial.println("No memory");
   }
-
-  // OBD2 port setup
-  while (!OBD2setup()) {
-    BTdisconnect();
-    Serial.println("Reconnecting to ELM327...");
-  }
-
-  xTaskCreatePinnedToCore(Task1code,"Task1",10000,NULL,1,&Task1,1); 
 }
 
 //---------------------------------------------------------------
@@ -269,8 +300,8 @@ unsigned long lastBT = 0, last_reconect_try = 0, lastPub = 0, lastMQTT = 0, last
 unsigned long BT_time_ms = 90;
 
 void loop() {
-  // MQTT ping every 4 seconds
-  if (millis() - lastMQTT > 4000) {
+  // MQTT ping every 2 seconds
+  if (millis() - lastMQTT > 2000) {
     Serial.println("Looping MQTT...");
     lastMQTT = millis();
     MQTTclient.loop();
@@ -298,8 +329,8 @@ void loop() {
         encendido = false;
         reconnect_time_ms = 30*1000;
       }
-    
       else if (myELM327.nb_rx_state != ELM_GETTING_MSG) {
+        Serial.println("ELM327 disconnected");
         BT_connected = false;
         encendido = false;
         reconnect_time_ms = 30*1000;
@@ -319,7 +350,6 @@ void loop() {
         connectToWiFi(wifi_ssid, wifi_password);
       }
       if (WiFi.isConnected()) {
-        //connectToWiFi(wifi_ssid, wifi_password);
         MQTTinitialize();
         if (MQTTclient.connected()) {
           digitalWrite(LED_CONNECTION, HIGH);
@@ -349,12 +379,12 @@ void loop() {
     if (WiFi.isConnected() && MQTTclient.connected()) {
       Serial.print("Publicando: ");
       Serial.println(mqtt_message);
-      MQTTclient.publish("testing/testing/encendido",mqtt_message,true);
+      MQTTclient.publish("vehiculos/placa/encendido",mqtt_message,true);
       if (BT_connected) {
-        MQTTclient.publish("testing/testing/BT","Y",true);
+        MQTTclient.publish("vehiculos/placa/BT","Y",true);
       }
       else {
-        MQTTclient.publish("testing/testing/BT","N",true);
+        MQTTclient.publish("vehiculos/placa/BT","N",true);
       }
     }
     else if (attached_card) {
