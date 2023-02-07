@@ -19,16 +19,16 @@ const char* ntpServer = "pool.ntp.org";
 const long  gmtOffset_sec = -18000;
 const int   daylightOffset_sec = 3600;
 
-const char* MQTT_URL = "broker.emqx.io";
-const char* MQTT_USERNAME = "emqx";
-const char* MQTT_PASSWORD = "public";
-const int MQTT_PORT = 1883;
-
 const int LED_POWER = 4;
 const int LED_CONNECTION = 21;
 const int I2C_SDA = 15;
 const int I2C_SCL = 22;
 const int LINE_SIZE = 23;
+
+const char* MQTT_URL = "broker.emqx.io";
+const char* MQTT_USERNAME = "emqx";
+const char* MQTT_PASSWORD = "public";
+const int MQTT_PORT = 1883;
 
 WiFiClient espClient;
 PubSubClient MQTTclient(espClient);
@@ -144,7 +144,10 @@ bool SDsetup()
 /// @brief Gets MQTT message from current time and state of vehicle
 void GetMQTTMessage(char* msg)
 {
-  DateTime dt = myRTC.now();
+  getLocalTime(&timeinfo);
+  DateTime dt = DateTime(timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, \
+    timeinfo.tm_mday, timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
+  //DateTime dt = myRTC.now();
   if (encendido) {
     sprintf(msg,"%d-%02d-%02dT%02d:%02d:%02d,Y",dt.year(), dt.month(), dt.day(), \
     dt.hour(), dt.minute(), dt.second());
@@ -211,11 +214,42 @@ bool ReadLine(int line_number, char* line)
     
 }
 
+/// @brief  Saves line number of Data file
+/// @param line_number  Number of line (index from 0)
+void SaveLineNum(int line_number)
+{
+  File file_writer = SD.open("/number.txt", "w+");
+  file_writer.printf("%d",line_number);
+  file_writer.close();
+}
+
+/// @brief Reads line number of Data file
+/// @return Number of line (index from 0)
+int ReadLineNum()
+{
+  char rx_char;
+  int number = 0;
+
+  File file_reader = SD.open("/number.txt", "r");
+  Serial.print("Number in file: ");
+  while (file_reader.available()) {
+    rx_char = file_reader.read();
+    Serial.print(rx_char);
+    if (rx_char>='0' && rx_char<='9') {
+      number = (rx_char - '0') + number*10;
+    }
+  }
+  Serial.print(", read number: ");
+  file_reader.close();
+  Serial.println(number);
+  return number;
+}
+
 /// @brief Uploads data in the SD card to the cloud
 void UploadData()
 {
   char line[25];
-  int current_line = 0;
+  int current_line = ReadLineNum();
 
   while (1) {
     // Reads current line
@@ -228,7 +262,9 @@ void UploadData()
     // Deleted line
     if (line[0] == ' ') {
       Serial.println(" Ignoring...");
+      MQTTclient.loop();
       current_line++;
+      SaveLineNum(current_line);
       continue; 
     }
 
@@ -251,13 +287,16 @@ void UploadData()
       digitalWrite(LED_CONNECTION, HIGH);
       delay(100);
       current_line++;
+      SaveLineNum(current_line);
     }
     else {
       return; // Keep the file if not published
     }
+    
   }
   Serial.println("Deleting file...");
   SD.remove("/Data.csv");
+  SaveLineNum(0);
   sent_lines = 0;
 }
 
@@ -463,10 +502,10 @@ void loop() {
     lastTime = millis();
     if (WiFi.isConnected() && MQTTclient.connected()) {
       configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);	// Configura fecha y hora con WiFi
-      getLocalTime(&timeinfo);
-      DateTime newDT = DateTime(timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, \
-        timeinfo.tm_mday, timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
-      myRTC.adjust(newDT);
+      // getLocalTime(&timeinfo);
+      // DateTime newDT = DateTime(timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, \
+      //   timeinfo.tm_mday, timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
+      // myRTC.adjust(newDT);
     }
   }
 }
