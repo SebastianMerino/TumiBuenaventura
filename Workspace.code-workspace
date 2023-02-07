@@ -46,7 +46,15 @@
 			"unordered_set": "cpp",
 			"vector": "cpp",
 			"string_view": "cpp",
-			"initializer_list": "cpp"
+			"initializer_list": "cpp",
+			"*.tcc": "cpp",
+			"istream": "cpp",
+			"ostream": "cpp",
+			"fstream": "cpp",
+			"iterator": "cpp",
+			"ranges": "cpp",
+			"span": "cpp",
+			"xstring": "cpp"
 		}
 	}
 }
