@@ -223,11 +223,11 @@ void UploadData()
       break;
     }
     Serial.print("Read line: ");
-    Serial.println(line);
+    Serial.print(line);
 
     // Deleted line
     if (line[0] == ' ') {
-      Serial.println("Ignoring...");
+      Serial.println(" Ignoring...");
       current_line++;
       continue; 
     }
@@ -244,7 +244,7 @@ void UploadData()
 
     // Deleting line if published
     if (published) {
-      Serial.print("Publishing...");
+      Serial.println(" Publishing...");
       DeleteLine(current_line);
       digitalWrite(LED_CONNECTION, LOW);
       delay(150);

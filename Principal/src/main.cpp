@@ -7,6 +7,8 @@
 #include <SD.h>
 #include <time.h>
 #include <esp_bt.h>
+#include <Wire.h>
+#include "RTClib.h"
 
 //---------------------------------------------------------------
 //		CONSTANTES
@@ -24,6 +26,9 @@ const int MQTT_PORT = 1883;
 
 const int LED_POWER = 4;
 const int LED_CONNECTION = 21;
+const int I2C_SDA = 15;
+const int I2C_SCL = 22;
+const int LINE_SIZE = 23;
 
 WiFiClient espClient;
 PubSubClient MQTTclient(espClient);
@@ -43,9 +48,10 @@ int reconnect_time_ms;
 bool encendido = false;
 bool mqtt_connected;
 struct tm timeinfo;
-char mqtt_message[25];
 bool BT_connected = true;
 int sent_lines = 0;
+TwoWire I2C_rtc = TwoWire(0);
+RTC_DS3231 myRTC;
 
 //---------------------------------------------------------------
 //		FUNCIONES
@@ -135,70 +141,122 @@ bool SDsetup()
   return true;
 }
 
-/// @brief Saves data in csv file 
-void SaveData()
+/// @brief Gets MQTT message from current time and state of vehicle
+void GetMQTTMessage(char* msg)
 {
-  File file = SD.open("/Data.csv", FILE_APPEND);
-  getLocalTime(&timeinfo);
+  DateTime dt = myRTC.now();
   if (encendido) {
-    sprintf(mqtt_message,"%d-%02d-%02dT%02d:%02d:%02d,Y",timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, \
-    timeinfo.tm_mday, timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
+    sprintf(msg,"%d-%02d-%02dT%02d:%02d:%02d,Y",dt.year(), dt.month(), dt.day(), \
+    dt.hour(), dt.minute(), dt.second());
   }
   else {
-    sprintf(mqtt_message,"%d-%02d-%02dT%02d:%02d:%02d,N",timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, \
-    timeinfo.tm_mday, timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
+    sprintf(msg,"%d-%02d-%02dT%02d:%02d:%02d,N",dt.year(), dt.month(), dt.day(), \
+    dt.hour(), dt.minute(), dt.second());
   }
-  file.print(mqtt_message);
-  file.print("\n");
+}
+
+/// @brief Saves data in csv file 
+void SaveData(char* msg)
+{
+  File file = SD.open("/Data.csv", FILE_APPEND);
+  file.println(msg);
   file.close();
+}
+
+/// @brief Deletes line
+/// @param line_number 	Number of line in file (index from 0)
+void DeleteLine(int line_number)
+{
+  File file_writer = SD.open("/Data.csv", "r+");
+  file_writer.seek(line_number*LINE_SIZE);
+  // Delete evereything but the EOL
+  for(int i=0;i<LINE_SIZE-2;i++) {
+    file_writer.print(" "); // all marked as deleted! yea!
+  }
+}
+
+/// @brief  Reads a single line
+/// @param line_number 	Number of line in file (index from 0)
+/// @param line 		Char array where line is located
+/// @return False if en of file is reached
+bool ReadLine(int line_number, char* line)
+{
+  char rx_char;
+  int id_char = 0;
+
+  File file_reader = SD.open("/Data.csv", "r+");
+  file_reader.seek(line_number*LINE_SIZE);
+
+  if (!file_reader.available()) {
+    return false;
+  }
+  else {
+    while (id_char<25) {
+      rx_char = file_reader.read();
+      if (rx_char == '\r') {
+        if (file_reader.read() == '\n') {
+          line[id_char] = '\0';
+          break;
+        }
+        else {
+          return false;
+        }
+      } 
+      line[id_char] = rx_char;
+      id_char++;
+    }
+    file_reader.close();
+    return true;
+  }
+    
 }
 
 /// @brief Uploads data in the SD card to the cloud
 void UploadData()
 {
-  char rx_char;
   char line[25];
   int current_line = 0;
-  int id_char;
-  File file = SD.open("/Data.csv", FILE_READ);
 
-  // Checks how many lines have been send already
-  if (sent_lines>0) {
-    while (file.available() && current_line<sent_lines) {
-      for (id_char=0; id_char<25; id_char++) {
-        rx_char = file.read();
-        if (rx_char == '\n') {
-          current_line++;
-          break;
-        } 
+  while (1) {
+    // Reads current line
+    if (!ReadLine(current_line,line)) {
+      break;
+    }
+    Serial.print("Read line: ");
+    Serial.print(line);
+
+    // Deleted line
+    if (line[0] == ' ') {
+      Serial.println(" Ignoring...");
+      current_line++;
+      continue; 
+    }
+
+    // Publish within timeout
+    unsigned long start = millis();
+    bool published = false;
+    while (millis() - start < 1000) {
+      if (MQTTclient.publish("vehiculos/placa/encendido",line)) {
+        published = true;
+        break;
       }
     }
-    MQTTclient.loop();
-  }
-  
-  while (file.available()) {
-    for (id_char=0; id_char<25; id_char++) {
-      rx_char = file.read();
-      if (rx_char == '\n') {
-        line[id_char] = '\0';
-        current_line++;
-        break;
-      } 
-      line[id_char] = rx_char;
+
+    // Deleting line if published
+    if (published) {
+      Serial.println(" Publishing...");
+      DeleteLine(current_line);
+      digitalWrite(LED_CONNECTION, LOW);
+      delay(150);
+      digitalWrite(LED_CONNECTION, HIGH);
+      delay(100);
+      current_line++;
     }
-    
-    if (!MQTTclient.connected() || !WiFi.isConnected()) {
-      return;
+    else {
+      return; // Keep the file if not published
     }
-    MQTTclient.publish("vehiculos/auto_prueba/encendido",line);
-    sent_lines = current_line;
-    Serial.print("Publicando: ");
-    Serial.println(line);
-    digitalWrite(LED_CONNECTION, LOW);
-    delay(150);
-    digitalWrite(LED_CONNECTION, HIGH);
-    delay(100);
   }
+  Serial.println("Deleting file...");
   SD.remove("/Data.csv");
   sent_lines = 0;
 }
@@ -261,7 +319,7 @@ void setup() {
   xTaskCreatePinnedToCore(Task1code,"Task1",10000,NULL,1,&Task1,1); 
 
   // Waiting for MQTT connection
-  timeout = 30*1000;
+  timeout = 10*1000;
   reconnect_time_ms = 30*1000;
   start = millis();
   while (millis() - start < timeout) {
@@ -269,7 +327,6 @@ void setup() {
       connectToWiFi(wifi_ssid, wifi_password);
     }
     if (WiFi.isConnected()) {
-      //connectToWiFi(wifi_ssid, wifi_password);
       if (MQTTinitialize()) {
         configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);	// Configura fecha y hora con WiFi
         digitalWrite(LED_CONNECTION, HIGH);
@@ -278,6 +335,16 @@ void setup() {
       }
     }
     delay(5*1000);
+  }
+
+  // RTC module
+  I2C_rtc.begin(I2C_SDA, I2C_SCL, 100000);
+  myRTC.begin(&I2C_rtc);
+  if (MQTTclient.connected() && WiFi.isConnected()) {
+    getLocalTime(&timeinfo);
+    DateTime newDT = DateTime(timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, \
+      timeinfo.tm_mday, timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
+    myRTC.adjust(newDT);
   }
 
   // SD card setup
@@ -298,8 +365,10 @@ void setup() {
 //---------------------------------------------------------------
 unsigned long lastBT = 0, last_reconect_try = 0, lastPub = 0, lastMQTT = 0, lastTime = 0;
 unsigned long BT_time_ms = 90;
+char mqtt_message[25];
 
 void loop() {
+
   // MQTT ping every 2 seconds
   if (millis() - lastMQTT > 2000) {
     Serial.println("Looping MQTT...");
@@ -366,15 +435,7 @@ void loop() {
   // Send MQTT message each 10 seconds
   if (millis() - lastPub > 10000) {
     lastPub = millis();
-    getLocalTime(&timeinfo);
-    if (encendido) {
-      sprintf(mqtt_message,"%d-%02d-%02dT%02d:%02d:%02d,Y",timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, \
-      timeinfo.tm_mday, timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
-    }
-    else {
-      sprintf(mqtt_message,"%d-%02d-%02dT%02d:%02d:%02d,N",timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, \
-      timeinfo.tm_mday, timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
-    }
+    GetMQTTMessage(mqtt_message);
 
     if (WiFi.isConnected() && MQTTclient.connected()) {
       Serial.print("Publicando: ");
@@ -390,7 +451,7 @@ void loop() {
     else if (attached_card) {
       Serial.print("Guardando en SD: ");
       Serial.println(mqtt_message);
-      SaveData();
+      SaveData(mqtt_message);
     } 
     else {
       Serial.println("No hay conexion");
@@ -402,6 +463,10 @@ void loop() {
     lastTime = millis();
     if (WiFi.isConnected() && MQTTclient.connected()) {
       configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);	// Configura fecha y hora con WiFi
+      getLocalTime(&timeinfo);
+      DateTime newDT = DateTime(timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, \
+        timeinfo.tm_mday, timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
+      myRTC.adjust(newDT);
     }
   }
 }
