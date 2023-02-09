@@ -10,6 +10,11 @@
 #include <Wire.h>
 #include "RTClib.h"
 
+/* Este script incluye:
+ -  Modulo RTC no implementado
+ -  Red WiFi conectada a celular
+ -  Últimos cambios al script principal */
+
 //---------------------------------------------------------------
 //		CONSTANTES
 //---------------------------------------------------------------
