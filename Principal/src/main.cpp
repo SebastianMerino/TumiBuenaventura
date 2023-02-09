@@ -228,16 +228,14 @@ int ReadLineNum()
   int number = 0;
 
   File file_reader = SD.open("/number.txt", "r");
-  Serial.print("Number in file: ");
   while (file_reader.available()) {
     rx_char = file_reader.read();
-    Serial.print(rx_char);
     if (rx_char>='0' && rx_char<='9') {
       number = (rx_char - '0') + number*10;
     }
   }
-  Serial.print(", read number: ");
   file_reader.close();
+  Serial.print("Line number: ");
   Serial.println(number);
   return number;
 }
@@ -256,10 +254,11 @@ void UploadData()
     Serial.print("Read line: ");
     Serial.print(line);
 
+    MQTTclient.loop();
+
     // Deleted line
     if (line[0] == ' ') {
       Serial.println(" Ignoring...");
-      MQTTclient.loop();
       current_line++;
       SaveLineNum(current_line);
       continue; 
@@ -287,12 +286,15 @@ void UploadData()
       SaveLineNum(current_line);
     }
     else {
+      Serial.println(" Lost connection...");
       return; // Keep the file if not published
     }
     
   }
   Serial.println("Deleting file...");
   SD.remove("/Data.csv");
+  File file = SD.open("/Data.csv", FILE_APPEND);
+  file.close();
   SaveLineNum(0);
   sent_lines = 0;
 }
@@ -407,7 +409,7 @@ void loop() {
 
   // MQTT ping every 2 seconds
   if (millis() - lastMQTT > 2000) {
-    Serial.println("Looping MQTT...");
+    // Serial.println("Looping MQTT...");
     lastMQTT = millis();
     MQTTclient.loop();
   }

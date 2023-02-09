@@ -42,8 +42,10 @@ uint8_t ELM_address[6]  = {0x01, 0x23, 0x45, 0x67, 0x89, 0xBA};
 //		VARIABLES GLOBALES
 //---------------------------------------------------------------
 bool attached_card;
-char wifi_ssid[] = "RouterPortatil";
-char wifi_password[] = "Buenaventura2023";
+// char wifi_ssid[] = "RouterPortatil";
+// char wifi_password[] = "Buenaventura2023";
+char wifi_ssid[] = "CELULAR";
+char wifi_password[] = "holis123";
 int reconnect_time_ms;
 bool encendido = false;
 bool mqtt_connected;
@@ -231,16 +233,14 @@ int ReadLineNum()
   int number = 0;
 
   File file_reader = SD.open("/number.txt", "r");
-  Serial.print("Number in file: ");
   while (file_reader.available()) {
     rx_char = file_reader.read();
-    Serial.print(rx_char);
     if (rx_char>='0' && rx_char<='9') {
       number = (rx_char - '0') + number*10;
     }
   }
-  Serial.print(", read number: ");
   file_reader.close();
+  Serial.print("Line number: ");
   Serial.println(number);
   return number;
 }
@@ -259,10 +259,11 @@ void UploadData()
     Serial.print("Read line: ");
     Serial.print(line);
 
+    MQTTclient.loop();
+
     // Deleted line
     if (line[0] == ' ') {
       Serial.println(" Ignoring...");
-      MQTTclient.loop();
       current_line++;
       SaveLineNum(current_line);
       continue; 
@@ -290,12 +291,15 @@ void UploadData()
       SaveLineNum(current_line);
     }
     else {
+      Serial.println(" Lost connection...");
       return; // Keep the file if not published
     }
     
   }
   Serial.println("Deleting file...");
   SD.remove("/Data.csv");
+  File file = SD.open("/Data.csv", FILE_APPEND);
+  file.close();
   SaveLineNum(0);
   sent_lines = 0;
 }
@@ -377,13 +381,14 @@ void setup() {
   }
 
   // RTC module
-  I2C_rtc.begin(I2C_SDA, I2C_SCL, 100000);
-  myRTC.begin(&I2C_rtc);
+  // I2C_rtc.begin(I2C_SDA, I2C_SCL, 100000);
+  // myRTC.begin(&I2C_rtc);
   if (MQTTclient.connected() && WiFi.isConnected()) {
-    getLocalTime(&timeinfo);
-    DateTime newDT = DateTime(timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, \
-      timeinfo.tm_mday, timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
-    myRTC.adjust(newDT);
+    configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);	// Configura fecha y hora con WiFi
+    // getLocalTime(&timeinfo);
+    // DateTime newDT = DateTime(timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, \
+    //   timeinfo.tm_mday, timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
+    // myRTC.adjust(newDT);
   }
 
   // SD card setup
@@ -410,7 +415,7 @@ void loop() {
 
   // MQTT ping every 2 seconds
   if (millis() - lastMQTT > 2000) {
-    Serial.println("Looping MQTT...");
+    // Serial.println("Looping MQTT...");
     lastMQTT = millis();
     MQTTclient.loop();
   }
