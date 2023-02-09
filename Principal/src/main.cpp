@@ -310,7 +310,7 @@ void pullDownPins()
 
 /// @brief  Function for threaded BT restart
 /// @param parameter NONE
-void Task1code(void * parameter)
+void BTthread(void * parameter)
 {
   while (1) {
     if (!BT_connected) {
@@ -321,7 +321,7 @@ void Task1code(void * parameter)
   }
 }
 
-TaskHandle_t Task1;
+TaskHandle_t TaskBT;
 
 //---------------------------------------------------------------
 //		MAIN SETUP
@@ -354,7 +354,7 @@ void setup() {
     Serial.println("Could not connect to ELM327, rebooting...");
     ESP.restart();
   }
-  xTaskCreatePinnedToCore(Task1code,"Task1",10000,NULL,1,&Task1,1); 
+  xTaskCreatePinnedToCore(BTthread,"Task1",10000,NULL,1,&TaskBT,1); 
 
   // Waiting for MQTT connection
   timeout = 10*1000;

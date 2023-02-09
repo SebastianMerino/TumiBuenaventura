@@ -11,9 +11,9 @@
 #include "RTClib.h"
 
 /* Este script incluye:
- -  Modulo RTC no implementado
  -  Red WiFi conectada a celular
- -  Últimos cambios al script principal */
+ -  Últimos cambios al script principal 
+ -  Mensajes MQTT publicados bajo el topico vehiculos */
 
 //---------------------------------------------------------------
 //		CONSTANTES
@@ -47,16 +47,17 @@ uint8_t ELM_address[6]  = {0x01, 0x23, 0x45, 0x67, 0x89, 0xBA};
 //		VARIABLES GLOBALES
 //---------------------------------------------------------------
 bool attached_card;
-// char wifi_ssid[] = "RouterPortatil";
-// char wifi_password[] = "Buenaventura2023";
-char wifi_ssid[] = "CELULAR";
-char wifi_password[] = "holis123";
-int reconnect_time_ms;
-bool encendido = false;
-bool mqtt_connected;
-struct tm timeinfo;
-bool BT_connected = true;
+char wifi_ssid[] = "RouterPortatil";
+char wifi_password[] = "Buenaventura2023";
+// char wifi_ssid[] = "CELULAR";
+// char wifi_password[] = "holis123";
 int sent_lines = 0;
+int reconnect_time_ms;
+bool mqtt_connected;
+bool encendido = false;
+bool BT_connected = true;
+bool uploading = false;
+struct tm timeinfo;
 TwoWire I2C_rtc = TwoWire(0);
 RTC_DS3231 myRTC;
 
@@ -151,10 +152,10 @@ bool SDsetup()
 /// @brief Gets MQTT message from current time and state of vehicle
 void GetMQTTMessage(char* msg)
 {
-  getLocalTime(&timeinfo);
-  DateTime dt = DateTime(timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, \
-    timeinfo.tm_mday, timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
-  //DateTime dt = myRTC.now();
+  // getLocalTime(&timeinfo);
+  // DateTime dt = DateTime(timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, \
+  //   timeinfo.tm_mday, timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
+  DateTime dt = myRTC.now();
   if (encendido) {
     sprintf(msg,"%d-%02d-%02dT%02d:%02d:%02d,Y",dt.year(), dt.month(), dt.day(), \
     dt.hour(), dt.minute(), dt.second());
@@ -318,20 +319,45 @@ void pullDownPins()
   }
 }
 
-/// @brief  Function for threaded BT restart
+/// @brief  Function for threaded BT communication with ELM327
 /// @param parameter NONE
-void Task1code(void * parameter)
+void BTthread(void * parameter)
 {
   while (1) {
     if (!BT_connected) {
       BTdisconnect();
       BT_connected = OBD2setup();
     }
-    delay(5000);
+    else {
+      myELM327.rpm(); // Asks for information
+      if (myELM327.nb_rx_state == ELM_SUCCESS) {
+        if (!encendido) {
+          Serial.println("on");
+        }
+        BT_connected = true;
+        encendido = true;
+        reconnect_time_ms = 5*1000;
+      }
+      else if (myELM327.nb_rx_state == ELM_NO_DATA) {
+        if (encendido) {
+          Serial.println("off");
+        }
+        BT_connected = true;
+        encendido = false;
+        reconnect_time_ms = 30*1000;
+      }
+      else if (myELM327.nb_rx_state != ELM_GETTING_MSG) {
+        Serial.println("ELM327 disconnected");
+        BT_connected = false;
+        encendido = false;
+        reconnect_time_ms = 30*1000;
+        myELM327.printError();
+      }
+    }
   }
 }
 
-TaskHandle_t Task1;
+TaskHandle_t TaskBT;
 
 //---------------------------------------------------------------
 //		MAIN SETUP
@@ -364,7 +390,7 @@ void setup() {
     Serial.println("Could not connect to ELM327, rebooting...");
     ESP.restart();
   }
-  xTaskCreatePinnedToCore(Task1code,"Task1",10000,NULL,1,&Task1,1); 
+  xTaskCreatePinnedToCore(BTthread,"TaskBT",10000,NULL,1,&TaskBT,1); 
 
   // Waiting for MQTT connection
   timeout = 10*1000;
@@ -386,14 +412,14 @@ void setup() {
   }
 
   // RTC module
-  // I2C_rtc.begin(I2C_SDA, I2C_SCL, 100000);
-  // myRTC.begin(&I2C_rtc);
+  I2C_rtc.begin(I2C_SDA, I2C_SCL, 100000);
+  myRTC.begin(&I2C_rtc);
   if (MQTTclient.connected() && WiFi.isConnected()) {
     configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);	// Configura fecha y hora con WiFi
-    // getLocalTime(&timeinfo);
-    // DateTime newDT = DateTime(timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, \
-    //   timeinfo.tm_mday, timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
-    // myRTC.adjust(newDT);
+    getLocalTime(&timeinfo);
+    DateTime newDT = DateTime(timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, \
+      timeinfo.tm_mday, timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
+    myRTC.adjust(newDT);
   }
 
   // SD card setup
@@ -417,44 +443,11 @@ unsigned long BT_time_ms = 90;
 char mqtt_message[25];
 
 void loop() {
-
   // MQTT ping every 2 seconds
   if (millis() - lastMQTT > 2000) {
     // Serial.println("Looping MQTT...");
     lastMQTT = millis();
     MQTTclient.loop();
-  }
-
-  // BT message every BT_time_ms 
-  if (millis() - lastBT > BT_time_ms) {
-    lastBT = millis();
-
-    if (BT_connected) {
-      myELM327.rpm(); // Asks for information
-      if (myELM327.nb_rx_state == ELM_SUCCESS) {
-        if (!encendido) {
-          Serial.println("on");
-        }
-        BT_connected = true;
-        encendido = true;
-        reconnect_time_ms = 5*1000;
-      }
-      else if (myELM327.nb_rx_state == ELM_NO_DATA) {
-        if (encendido) {
-          Serial.println("off");
-        }
-        BT_connected = true;
-        encendido = false;
-        reconnect_time_ms = 30*1000;
-      }
-      else if (myELM327.nb_rx_state != ELM_GETTING_MSG) {
-        Serial.println("ELM327 disconnected");
-        BT_connected = false;
-        encendido = false;
-        reconnect_time_ms = 30*1000;
-        myELM327.printError();
-      }
-    }
   }
 
   // Checks connection
@@ -512,10 +505,10 @@ void loop() {
     lastTime = millis();
     if (WiFi.isConnected() && MQTTclient.connected()) {
       configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);	// Configura fecha y hora con WiFi
-      // getLocalTime(&timeinfo);
-      // DateTime newDT = DateTime(timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, \
-      //   timeinfo.tm_mday, timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
-      // myRTC.adjust(newDT);
+      getLocalTime(&timeinfo);
+      DateTime newDT = DateTime(timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, \
+        timeinfo.tm_mday, timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
+      myRTC.adjust(newDT);
     }
   }
 }
