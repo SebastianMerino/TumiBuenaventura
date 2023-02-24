@@ -17,10 +17,6 @@
 			"path": "OBD2"
 		},
 		{
-			"name": "Pruebas",
-			"path": "Pruebas"
-		},
-		{
 			"name": "MemoriaSD",
 			"path": "MemoriaSD"
 		},
