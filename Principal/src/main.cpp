@@ -10,10 +10,10 @@
 #include <Wire.h>
 #include "RTClib.h"
 
-/* Observaciones antes de la implementacion:
-  - 
-  - 
-  -  */
+/*----------------------------------------------------------- 
+  Observaciones antes de la implementacion:
+  - Cambiar periodo de mensaje MQTT de 1 minuto a una hora
+  ----------------------------------------------------------- */
 
 //---------------------------------------------------------------
 //		CONSTANTES
@@ -30,10 +30,31 @@ const int I2C_SDA = 15;
 const int I2C_SCL = 22;
 const int LINE_SIZE = 23;
 
+const char* WIFI_SSID = "RouterPortatil";
+const char* WIFI_PASSWORD = "Buenaventura2023";
+// const char* WIFI_SSID = "CELULAR";
+// const char* WIFI_PASSWORD = "holis123";
 const char* MQTT_URL = "broker.emqx.io";
 const char* MQTT_USERNAME = "emqx";
 const char* MQTT_PASSWORD = "public";
+const char* MQTT_BROKER_CONNECTION_TOPIC = "vehiculos/placa/conectado";
+const char* MQTT_BT_CONNECTION_TOPIC = "vehiculos/placa/BT";
+const char* MQTT_VEHICLE_TOPIC = "vehiculos/placa/encendido";
 const int MQTT_PORT = 1883;
+
+
+//---------------------------------------------------------------
+//		VARIABLES GLOBALES
+//---------------------------------------------------------------
+int sent_lines = 0;
+int reconnect_time_ms;
+bool attached_card;
+bool mqtt_connected;
+bool encendido = false;
+bool BT_connected = true;
+bool uploading = false;
+bool state_change = true;
+struct tm timeinfo;
 
 WiFiClient espClient;
 PubSubClient MQTTclient(espClient);
@@ -42,22 +63,6 @@ BluetoothSerial SerialBT;
 ELM327 myELM327;
 uint8_t ELM_address[6]  = {0x01, 0x23, 0x45, 0x67, 0x89, 0xBA};
 
-
-//---------------------------------------------------------------
-//		VARIABLES GLOBALES
-//---------------------------------------------------------------
-bool attached_card;
-char wifi_ssid[] = "RouterPortatil";
-char wifi_password[] = "Buenaventura2023";
-// char wifi_ssid[] = "CELULAR";
-// char wifi_password[] = "holis123";
-int sent_lines = 0;
-int reconnect_time_ms;
-bool mqtt_connected;
-bool encendido = false;
-bool BT_connected = true;
-bool uploading = false;
-struct tm timeinfo;
 TwoWire I2C_rtc = TwoWire(0);
 RTC_DS3231 myRTC;
 
@@ -97,9 +102,9 @@ bool MQTTinitialize()
   MQTTclient.setKeepAlive(5);
   Serial.print("Attempting MQTT connection...");
   // Attempt to connect
-  if (MQTTclient.connect("ESP32Client",MQTT_USERNAME,MQTT_PASSWORD,"vehiculos/placa/conectado",2,true,"N")) {
+  if (MQTTclient.connect("ESP32Client",MQTT_USERNAME,MQTT_PASSWORD,MQTT_BROKER_CONNECTION_TOPIC,2,true,"N")) {
     Serial.println("connected");
-    MQTTclient.publish("vehiculos/placa/conectado","Y",true);
+    MQTTclient.publish(MQTT_BROKER_CONNECTION_TOPIC,"Y",true);
     return true;
   } else {
     Serial.print("failed, rc=");
@@ -152,9 +157,6 @@ bool SDsetup()
 /// @brief Gets MQTT message from current time and state of vehicle
 void GetMQTTMessage(char* msg)
 {
-  // getLocalTime(&timeinfo);
-  // DateTime dt = DateTime(timeinfo.tm_year + 1900, timeinfo.tm_mon + 1, \
-  //   timeinfo.tm_mday, timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
   DateTime dt = myRTC.now();
   if (encendido) {
     sprintf(msg,"%d-%02d-%02dT%02d:%02d:%02d,Y",dt.year(), dt.month(), dt.day(), \
@@ -279,7 +281,7 @@ void UploadData()
     unsigned long start = millis();
     bool published = false;
     while (millis() - start < 1000) {
-      if (MQTTclient.publish("vehiculos/placa/encendido",line)) {
+      if (MQTTclient.publish(MQTT_VEHICLE_TOPIC,line)) {
         published = true;
         break;
       }
@@ -333,6 +335,7 @@ void BTthread(void * parameter)
       if (myELM327.nb_rx_state == ELM_SUCCESS) {
         if (!encendido) {
           Serial.println("on");
+          state_change = true;
         }
         BT_connected = true;
         encendido = true;
@@ -341,17 +344,21 @@ void BTthread(void * parameter)
       else if (myELM327.nb_rx_state == ELM_NO_DATA) {
         if (encendido) {
           Serial.println("off");
+          state_change = true;
         }
         BT_connected = true;
         encendido = false;
         reconnect_time_ms = 30*1000;
       }
       else if (myELM327.nb_rx_state != ELM_GETTING_MSG) {
+        if (encendido) {
+          state_change = true;
+        }
         Serial.println("ELM327 disconnected");
         BT_connected = false;
         encendido = false;
         reconnect_time_ms = 30*1000;
-        myELM327.printError();
+        //myELM327.printError();
       }
     }
   }
@@ -398,7 +405,7 @@ void setup() {
   start = millis();
   while (millis() - start < timeout) {
     if (!WiFi.isConnected()) {
-      connectToWiFi(wifi_ssid, wifi_password);
+      connectToWiFi(WIFI_SSID, WIFI_PASSWORD);
     }
     if (WiFi.isConnected()) {
       if (MQTTinitialize()) {
@@ -441,6 +448,7 @@ void setup() {
 unsigned long lastBT = 0, last_reconect_try = 0, lastPub = 0, lastMQTT = 0, lastTime = 0;
 unsigned long BT_time_ms = 90;
 char mqtt_message[25];
+bool published;
 
 void loop() {
   // MQTT ping every 2 seconds
@@ -458,7 +466,7 @@ void loop() {
     if (millis() - last_reconect_try > reconnect_time_ms) {
       last_reconect_try = millis();
       if (!WiFi.isConnected()) {
-        connectToWiFi(wifi_ssid, wifi_password);
+        connectToWiFi(WIFI_SSID, WIFI_PASSWORD);
       }
       if (WiFi.isConnected()) {
         MQTTinitialize();
@@ -474,23 +482,33 @@ void loop() {
     }
   }
 
-  // Send MQTT message each 10 seconds
-  if (millis() - lastPub > 10000) {
+  // Send MQTT message each hour
+  if (millis() - lastPub > 60*60*1000 || state_change) {
     lastPub = millis();
+    state_change = false;
     GetMQTTMessage(mqtt_message);
 
     if (WiFi.isConnected() && MQTTclient.connected()) {
       Serial.print("Publicando: ");
       Serial.println(mqtt_message);
-      MQTTclient.publish("vehiculos/placa/encendido",mqtt_message,true);
+      
+      unsigned long start = millis();
+      published = false;
+      while (millis() - start < 1000) {
+        if (MQTTclient.publish(MQTT_VEHICLE_TOPIC,mqtt_message)) {
+          published = true;
+          break;
+        }
+      }
+
       if (BT_connected) {
-        MQTTclient.publish("vehiculos/placa/BT","Y",true);
+        MQTTclient.publish(MQTT_BT_CONNECTION_TOPIC,"Y",true);
       }
       else {
-        MQTTclient.publish("vehiculos/placa/BT","N",true);
+        MQTTclient.publish(MQTT_BT_CONNECTION_TOPIC,"N",true);
       }
     }
-    else if (attached_card) {
+    else if (attached_card || !published) {
       Serial.print("Guardando en SD: ");
       Serial.println(mqtt_message);
       SaveData(mqtt_message);
