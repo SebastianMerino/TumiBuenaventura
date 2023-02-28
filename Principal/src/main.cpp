@@ -12,7 +12,7 @@
 
 /*----------------------------------------------------------- 
   Observaciones antes de la implementacion:
-  - Cambiar periodo de mensaje MQTT de 1 minuto a una hora
+  - Ya implementado
   ----------------------------------------------------------- */
 
 //---------------------------------------------------------------
@@ -70,7 +70,10 @@ RTC_DS3231 myRTC;
 //		FUNCIONES
 //---------------------------------------------------------------
 
-/// @brief Se conecta a una red en especifico
+/// @brief Conects to specific network
+/// @param wifi_ssid Name of network
+/// @param wifi_password Password
+/// @return True if succesful
 bool connectToWiFi(const char* wifi_ssid, const char* wifi_password)
 {
 	WiFi.disconnect(true,true);
@@ -94,7 +97,8 @@ bool connectToWiFi(const char* wifi_ssid, const char* wifi_password)
 	}
 }
 
-/// @brief Se conecta al servidor MQTT 
+/// @brief Conects to MQTT broker 
+/// @return True if succesful
 bool MQTTinitialize()
 {
   MQTTclient.disconnect();
@@ -113,7 +117,8 @@ bool MQTTinitialize()
   }
 }
 
-/// @brief Inicializa el Bluetooth y se conecta al ELM327 
+/// @brief Initializes Bluetooth and conects to ELM327 
+/// @return True if succesful
 bool OBD2setup()
 {
   // Serial.println("\nConnecting to OBDII scanner..."); 
@@ -154,7 +159,8 @@ bool SDsetup()
   return true;
 }
 
-/// @brief Gets MQTT message from current time and state of vehicle
+/// @brief Gets MQTT message from current lecture
+/// @param msg Pointer to MQTT message
 void GetMQTTMessage(char* msg)
 {
   DateTime dt = myRTC.now();
@@ -169,6 +175,7 @@ void GetMQTTMessage(char* msg)
 }
 
 /// @brief Saves data in csv file 
+/// @param msg MQTT message
 void SaveData(char* msg)
 {
   File file = SD.open("/Data.csv", FILE_APPEND);
@@ -325,12 +332,16 @@ void pullDownPins()
 /// @param parameter NONE
 void BTthread(void * parameter)
 {
+  int cuenta = 0;
+  unsigned long start = millis();
   while (1) {
+    // ADD 1 MS DELAY 
     if (!BT_connected) {
       BTdisconnect();
       BT_connected = OBD2setup();
     }
     else {
+      start = millis();
       myELM327.rpm(); // Asks for information
       if (myELM327.nb_rx_state == ELM_SUCCESS) {
         if (!encendido) {
@@ -340,6 +351,7 @@ void BTthread(void * parameter)
         BT_connected = true;
         encendido = true;
         reconnect_time_ms = 5*1000;
+        while (millis() - start <1000) ;
       }
       else if (myELM327.nb_rx_state == ELM_NO_DATA) {
         if (encendido) {
@@ -349,16 +361,22 @@ void BTthread(void * parameter)
         BT_connected = true;
         encendido = false;
         reconnect_time_ms = 30*1000;
+        while (millis() - start <1000) ;
       }
       else if (myELM327.nb_rx_state != ELM_GETTING_MSG) {
         if (encendido) {
-          state_change = true;
+          Serial.println("ELM327 disconnected");
+          cuenta++;
         }
-        Serial.println("ELM327 disconnected");
+        if (cuenta >= 1) {
+          cuenta = 0;
+          state_change = true;
+          encendido = false;
+          reconnect_time_ms = 30*1000;
+        }
         BT_connected = false;
-        encendido = false;
-        reconnect_time_ms = 30*1000;
-        //myELM327.printError();
+        myELM327.printError();
+        while (millis() - start <1000) ;
       }
     }
   }
